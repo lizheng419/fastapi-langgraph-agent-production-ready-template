@@ -21,7 +21,10 @@ from fastapi.security import (
 
 from app.core.config import settings
 from app.core.limiter import limiter
-from app.core.logging import bind_context, logger
+from app.core.logging import (
+    bind_context,
+    logger,
+)
 from app.models.session import Session
 from app.models.user import User
 from app.schemas.auth import (

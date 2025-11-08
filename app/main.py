@@ -26,7 +26,10 @@ from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
 from app.core.metrics import setup_metrics
-from app.core.middleware import LoggingContextMiddleware, MetricsMiddleware
+from app.core.middleware import (
+    LoggingContextMiddleware,
+    MetricsMiddleware,
+)
 from app.services.database import database_service
 
 # Load environment variables
