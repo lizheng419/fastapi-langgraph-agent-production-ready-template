@@ -1,0 +1,107 @@
+{
+  "_comment": "RAG Knowledge Base Provider Configuration. Enable/disable providers as needed.",
+  "providers": [
+    {
+      "name": "local_qdrant",
+      "type": "qdrant",
+      "enabled": true,
+      "config": {
+        "host": "qdrant",
+        "port": 6333,
+        "collection_name": "rag_documents",
+        "embedding_model": "text-embedding-3-small",
+        "score_threshold": 0.3
+      }
+    },
+    {
+      "name": "local_pgvector",
+      "type": "pgvector",
+      "enabled": false,
+      "config": {
+        "_comment": "Uses main POSTGRES_* settings from .env by default",
+        "collection_name": "rag_documents",
+        "embedding_model": "text-embedding-3-small"
+      }
+    },
+    {
+      "name": "ragflow",
+      "type": "ragflow",
+      "enabled": false,
+      "config": {
+        "base_url": "http://ragflow:9380",
+        "api_key": "ragflow-api-key-here",
+        "mode": "retrieval",
+        "dataset_ids": ["dataset-id-1"],
+        "similarity_threshold": 0.3,
+        "timeout": 30
+      }
+    },
+    {
+      "name": "dify_knowledge",
+      "type": "http",
+      "enabled": false,
+      "config": {
+        "base_url": "http://dify:3000",
+        "endpoint": "/v1/datasets/{dataset_id}/retrieve",
+        "method": "POST",
+        "api_key": "dify-api-key-here",
+        "auth_header": "Authorization",
+        "auth_prefix": "Bearer",
+        "timeout": 30,
+        "request_body_template": {
+          "query": "{query}",
+          "retrieval_model": {
+            "search_method": "semantic_search",
+            "top_k": "{top_k}"
+          }
+        },
+        "response_docs_path": "records",
+        "response_content_key": "content",
+        "response_source_key": "title",
+        "response_score_key": "score"
+      }
+    },
+    {
+      "name": "fastgpt_knowledge",
+      "type": "http",
+      "enabled": false,
+      "config": {
+        "base_url": "http://fastgpt:3000",
+        "endpoint": "/api/core/dataset/searchTest",
+        "method": "POST",
+        "api_key": "fastgpt-api-key-here",
+        "timeout": 30,
+        "request_body_template": {
+          "datasetId": "your-dataset-id",
+          "text": "{query}",
+          "limit": "{top_k}"
+        },
+        "response_docs_path": "data",
+        "response_content_key": "q",
+        "response_source_key": "sourceName",
+        "response_score_key": "score"
+      }
+    },
+    {
+      "name": "custom_api",
+      "type": "http",
+      "enabled": false,
+      "config": {
+        "_comment": "Template for any custom REST API knowledge base",
+        "base_url": "http://your-kb-service:8080",
+        "endpoint": "/api/search",
+        "method": "POST",
+        "api_key": "",
+        "timeout": 30,
+        "request_body_template": {
+          "query": "{query}",
+          "top_k": "{top_k}"
+        },
+        "response_docs_path": "data.results",
+        "response_content_key": "content",
+        "response_source_key": "source",
+        "response_score_key": "score"
+      }
+    }
+  ]
+}

@@ -2,7 +2,12 @@
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
-from langchain_core.messages import trim_messages as _trim_messages
+from langchain_core.messages.utils import (
+    count_tokens_approximately,
+)
+from langchain_core.messages.utils import (
+    trim_messages as _trim_messages,
+)
 
 from app.core.config import settings
 from app.core.logging import logger
@@ -82,23 +87,18 @@ def prepare_messages(messages: list[Message], llm: BaseChatModel, system_prompt:
         trimmed_messages = _trim_messages(
             dump_messages(messages),
             strategy="last",
-            token_counter=llm,
+            token_counter=count_tokens_approximately,
             max_tokens=settings.MAX_TOKENS,
             start_on="human",
             include_system=False,
             allow_partial=False,
         )
-    except ValueError as e:
-        # Handle unrecognized content blocks (e.g., reasoning blocks from GPT-5)
-        if "Unrecognized content block type" in str(e):
-            logger.warning(
-                "token_counting_failed_skipping_trim",
-                error=str(e),
-                message_count=len(messages),
-            )
-            # Skip trimming and return all messages
-            trimmed_messages = messages
-        else:
-            raise
+    except (ValueError, NotImplementedError) as e:
+        logger.warning(
+            "token_counting_failed_skipping_trim",
+            error=str(e),
+            message_count=len(messages),
+        )
+        trimmed_messages = dump_messages(messages)
 
     return [Message(role="system", content=system_prompt)] + trimmed_messages

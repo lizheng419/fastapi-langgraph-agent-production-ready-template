@@ -9,25 +9,8 @@ echo "Initial Database Port: $( [[ -n ${POSTGRES_PORT:-${DB_PORT:-}} ]] && echo 
 echo "Initial Database Name: $( [[ -n ${POSTGRES_DB:-${DB_NAME:-}} ]] && echo 'set' || echo 'Not set' )"
 echo "Initial Database User: $( [[ -n ${POSTGRES_USER:-${DB_USER:-}} ]] && echo 'set' || echo 'Not set' )"
 
-# Load environment variables from the appropriate .env file
-if [ -f ".env.${APP_ENV}" ]; then
-    echo "Loading environment from .env.${APP_ENV}"
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Skip comments and empty lines
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "$line" ]] && continue
-
-        # Extract the key
-        key=$(echo "$line" | cut -d '=' -f 1)
-
-        # Only set if not already set in environment
-        if [[ -z "${!key}" ]]; then
-            export "$line"
-        else
-            echo "Keeping existing value for $key"
-        fi
-    done <".env.${APP_ENV}"
-elif [ -f ".env" ]; then
+# Load environment variables from .env (only set if not already in environment)
+if [ -f ".env" ]; then
     echo "Loading environment from .env"
     while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip comments and empty lines

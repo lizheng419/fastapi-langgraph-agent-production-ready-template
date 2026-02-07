@@ -1,0 +1,70 @@
+{
+  "login": {
+    "title": "AI 智能助手",
+    "subtitle": "多智能体 LangGraph 平台",
+    "loginTab": "登录",
+    "registerTab": "注册",
+    "email": "邮箱",
+    "emailPlaceholder": "请输入邮箱",
+    "password": "密码",
+    "passwordPlaceholder": "请输入密码",
+    "signIn": "登录",
+    "createAccount": "注册账号"
+  },
+  "chat": {
+    "title": "AI 助手",
+    "subtitle": "多智能体系统",
+    "newChat": "新对话",
+    "approvals": "审批",
+    "logout": "退出登录",
+    "welcomeTitle": "有什么可以帮您？",
+    "welcomeSubtitle": "我是一个多智能体 AI 助手，可以帮您研究课题、编写代码、分析数据等。",
+    "suggestion1": "帮我写一个 Python 函数",
+    "suggestion2": "分析销售数据趋势",
+    "suggestion3": "研究最新的 AI 技术",
+    "suggestion4": "审查我的 SQL 查询",
+    "inputPlaceholder": "输入您的消息...",
+    "inputHint": "按 Enter 发送，Shift+Enter 换行",
+    "workflowAuto": "LLM 自动规划",
+    "mode": {
+      "single": "单 Agent",
+      "multi": "多 Agent",
+      "workflow": "Workflow 编排"
+    },
+    "modeDesc": {
+      "single": "create_agent + Middleware",
+      "multi": "Supervisor + Worker 多智能体",
+      "workflow": "Orchestrator-Worker 多步工作流"
+    },
+    "connectionError": "无法连接到服务器，正在自动重试...",
+    "retry": "重试"
+  },
+  "approvals": {
+    "title": "人工审批队列",
+    "subtitle": "审查并批准智能体操作",
+    "refresh": "刷新",
+    "loading": "正在加载待审批项...",
+    "allClear": "全部完成",
+    "noApprovals": "暂无待审批项。",
+    "backToChat": "返回对话",
+    "pendingCount": "{count} 个待审批",
+    "pending": "待审批",
+    "type": "类型",
+    "actionDetails": "操作详情",
+    "created": "创建时间",
+    "expires": "过期时间",
+    "hideComment": "隐藏评论",
+    "addComment": "添加评论",
+    "commentPlaceholder": "可选的审查评论...",
+    "approve": "批准",
+    "reject": "拒绝"
+  },
+  "sidebar": {
+    "sessions": "会话列表",
+    "noSessions": "暂无会话记录"
+  },
+  "language": {
+    "zh": "中文",
+    "en": "English"
+  }
+}

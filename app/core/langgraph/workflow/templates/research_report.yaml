@@ -1,0 +1,19 @@
+name: research_report
+description: "调研报告流程：信息收集 → 数据分析 → 撰写报告"
+steps:
+  - id: research
+    worker: researcher
+    task: "针对用户的主题进行全面的信息收集和调研，整理关键发现、数据来源和核心观点。"
+    depends_on: []
+
+  - id: analyze
+    worker: analyst
+    task: "基于调研结果进行深入的数据分析，提取趋势、对比数据、生成统计洞察。"
+    depends_on:
+      - research
+
+  - id: write
+    worker: coder
+    task: "基于调研和分析结果，撰写结构化的最终报告，包含摘要、正文、结论和建议。使用 Markdown 格式。"
+    depends_on:
+      - analyze

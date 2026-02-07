@@ -1,0 +1,19 @@
+name: code_review
+description: "完整的代码审查流程：分析结构 → 审查代码 → 生成报告"
+steps:
+  - id: analyze
+    worker: analyst
+    task: "分析代码的整体结构、依赖关系和潜在的性能问题。列出关键发现。"
+    depends_on: []
+
+  - id: review
+    worker: coder
+    task: "基于分析结果，对代码进行详细审查：安全性、最佳实践、错误处理、类型提示。提供具体的修改建议。"
+    depends_on:
+      - analyze
+
+  - id: report
+    worker: researcher
+    task: "汇总分析和审查结果，生成结构化的代码审查报告，包含优先级排序的改进建议。"
+    depends_on:
+      - review

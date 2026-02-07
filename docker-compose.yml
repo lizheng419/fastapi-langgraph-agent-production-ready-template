@@ -1,26 +1,19 @@
-version: '3.8'
+# Full stack: infrastructure + app + monitoring.
+# Usage:
+#   docker compose up -d
+#
+# For local dev (infra only):
+#   docker compose -f docker-compose-base.yml up -d
+#
+# For infra + monitoring (no app):
+#   docker compose -f docker-compose-base.yml -f docker-compose-monitoring.yml up -d
+
+include:
+  - docker-compose-base.yml
+  - docker-compose-monitoring.yml
 
 services:
-  db:
-    image: pgvector/pgvector:pg16
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: always
-    networks:
-      - monitoring
-
-  # Single API service with dynamic environment
+  # Backend API service
   app:
     build:
       context: .
@@ -31,16 +24,19 @@ services:
     volumes:
       - ./app:/app/app
       - ./logs:/app/logs
-    env_file:
-      - .env.${APP_ENV:-development}
+      - ./mcp_servers.json:/app/mcp_servers.json:ro
+      - ./rag_providers.json:/app/rag_providers.json:ro
+    env_file: .env
     environment:
       - APP_ENV=${APP_ENV:-development}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretkeythatshouldbechangedforproduction}
     depends_on:
       db:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -49,53 +45,15 @@ services:
     networks:
       - monitoring
 
-  # Prometheus
-  prometheus:
-    image: prom/prometheus:latest
+  # Frontend (React + Vite)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+      - "3001:80"
+    depends_on:
+      - app
     networks:
       - monitoring
-    restart: always
-
-  # Grafana
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-storage:/var/lib/grafana
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - ./grafana/dashboards/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    networks:
-      - monitoring
-    restart: always
-
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:rw
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    networks:
-      - monitoring
-    restart: always
-
-
-networks:
-  monitoring:
-    driver: bridge
-
-volumes:
-  grafana-storage:
-  postgres-data:
+    restart: on-failure

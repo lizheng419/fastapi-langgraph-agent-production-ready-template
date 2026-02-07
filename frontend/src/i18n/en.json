@@ -1,0 +1,70 @@
+{
+  "login": {
+    "title": "AI Agent Assistant",
+    "subtitle": "Multi-Agent LangGraph Platform",
+    "loginTab": "Login",
+    "registerTab": "Register",
+    "email": "Email",
+    "emailPlaceholder": "your@email.com",
+    "password": "Password",
+    "passwordPlaceholder": "Enter password",
+    "signIn": "Sign In",
+    "createAccount": "Create Account"
+  },
+  "chat": {
+    "title": "AI Agent",
+    "subtitle": "Multi-Agent System",
+    "newChat": "New Chat",
+    "approvals": "Approvals",
+    "logout": "Logout",
+    "welcomeTitle": "How can I help you?",
+    "welcomeSubtitle": "I'm a multi-agent AI assistant. I can research topics, write code, analyze data, and more.",
+    "suggestion1": "Help me write a Python function",
+    "suggestion2": "Analyze sales data trends",
+    "suggestion3": "Research the latest in AI",
+    "suggestion4": "Review my SQL query",
+    "inputPlaceholder": "Type your message...",
+    "inputHint": "Press Enter to send, Shift+Enter for new line",
+    "workflowAuto": "LLM Auto Plan",
+    "mode": {
+      "single": "Single Agent",
+      "multi": "Multi Agent",
+      "workflow": "Workflow"
+    },
+    "modeDesc": {
+      "single": "create_agent + Middleware",
+      "multi": "Supervisor + Worker multi-agent",
+      "workflow": "Orchestrator-Worker multi-step"
+    },
+    "connectionError": "Cannot reach server. Retrying automatically...",
+    "retry": "Retry"
+  },
+  "approvals": {
+    "title": "Human Approval Queue",
+    "subtitle": "Review and approve agent actions",
+    "refresh": "Refresh",
+    "loading": "Loading pending approvals...",
+    "allClear": "All Clear",
+    "noApprovals": "No pending approvals at the moment.",
+    "backToChat": "Back to Chat",
+    "pendingCount": "{count} pending approval(s)",
+    "pending": "Pending",
+    "type": "Type",
+    "actionDetails": "Action Details",
+    "created": "Created",
+    "expires": "Expires",
+    "hideComment": "Hide comment",
+    "addComment": "Add comment",
+    "commentPlaceholder": "Optional review comment...",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "sidebar": {
+    "sessions": "Sessions",
+    "noSessions": "No sessions yet"
+  },
+  "language": {
+    "zh": "中文",
+    "en": "English"
+  }
+}

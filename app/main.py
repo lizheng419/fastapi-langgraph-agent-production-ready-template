@@ -1,7 +1,14 @@
 """This file contains the main application entry point."""
 
+import asyncio
 import os
+import sys
 from contextlib import asynccontextmanager
+
+# Windows: psycopg async requires SelectorEventLoop, not ProactorEventLoop
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from datetime import datetime
 from typing import (
     Any,
@@ -105,7 +112,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         formatted_errors.append({"field": loc, "message": error["msg"]})
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": "Validation error", "errors": formatted_errors},
     )
 

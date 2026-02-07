@@ -44,6 +44,8 @@ logs/
 Dockerfile
 .dockerignore
 docker-compose.yml
+docker-compose-base.yml
+docker-compose-monitoring.yml
 
 # Documentation
 docs/

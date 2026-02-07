@@ -149,6 +149,7 @@ class Settings:
 
         # LangGraph Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        self.OPENAI_API_BASE = os.getenv("OPENAI_API_BASE", "")
         self.DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-5-mini")
         self.DEFAULT_LLM_TEMPERATURE = float(os.getenv("DEFAULT_LLM_TEMPERATURE", "0.2"))
         self.MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
@@ -158,6 +159,14 @@ class Settings:
         self.LONG_TERM_MEMORY_MODEL = os.getenv("LONG_TERM_MEMORY_MODEL", "gpt-5-nano")
         self.LONG_TERM_MEMORY_EMBEDDER_MODEL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_MODEL", "text-embedding-3-small")
         self.LONG_TERM_MEMORY_COLLECTION_NAME = os.getenv("LONG_TERM_MEMORY_COLLECTION_NAME", "longterm_memory")
+
+        # Qdrant Configuration (for future RAG integration)
+        self.QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
+        self.QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+        self.QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
+        self.QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
+        self.QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "rag_documents")
+
         # JWT Configuration
         self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
         self.JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -178,6 +187,17 @@ class Settings:
         self.POSTGRES_MAX_OVERFLOW = int(os.getenv("POSTGRES_MAX_OVERFLOW", "10"))
         self.CHECKPOINT_TABLES = ["checkpoint_blobs", "checkpoint_writes", "checkpoints"]
 
+        # Summarization Middleware Configuration
+        self.SUMMARIZATION_MODEL = os.getenv("SUMMARIZATION_MODEL", "gpt-4.1-mini")
+        self.SUMMARIZATION_TRIGGER_TOKENS = int(os.getenv("SUMMARIZATION_TRIGGER_TOKENS", "4000"))
+        self.SUMMARIZATION_KEEP_MESSAGES = int(os.getenv("SUMMARIZATION_KEEP_MESSAGES", "20"))
+
+        # HITL (Human-in-the-Loop) Configuration
+        self.SENSITIVE_TOOL_PATTERNS: List[str] = parse_list_from_env(
+            "SENSITIVE_TOOL_PATTERNS",
+            ["delete", "modify", "update", "write", "execute_sql", "send_email"],
+        )
+
         # Rate Limiting Configuration
         self.RATE_LIMIT_DEFAULT = parse_list_from_env("RATE_LIMIT_DEFAULT", ["200 per day", "50 per hour"])
 
@@ -190,6 +210,7 @@ class Settings:
             "login": ["20 per minute"],
             "root": ["10 per minute"],
             "health": ["20 per minute"],
+            "approvals": ["50 per minute"],
         }
 
         # Update rate limit endpoints from environment variables

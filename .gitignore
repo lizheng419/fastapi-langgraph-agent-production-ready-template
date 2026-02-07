@@ -11,10 +11,10 @@ wheels/
 .venv
 
 # Environment variables
-.env
-.env.development
-.env.staging
-.env.production
+# .env
+# .env.development
+# .env.staging
+# .env.production
 
 # Misc
 *.ipynb
