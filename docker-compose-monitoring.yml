@@ -37,7 +37,7 @@ services:
 
   # cAdvisor — container resource monitoring
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.nju.edu.cn/cadvisor/cadvisor:latest
     ports:
       - "8080:8080"
     volumes:
