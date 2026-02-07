@@ -16,7 +16,7 @@
       "title": "LLM Inference Duration (p95)",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[5m]))",
           "legendFormat": "{{model}} (chat)",
           "refId": "A"
         }
@@ -43,7 +43,7 @@
       "title": "LLM Stream Inference Duration (p95)",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(llm_stream_duration_seconds_bucket[1m]))",
+          "expr": "histogram_quantile(0.95, rate(llm_stream_duration_seconds_bucket[5m]))",
           "legendFormat": "{{model}} (stream)",
           "refId": "B"
         }
@@ -70,7 +70,7 @@
       "title": "LLM Inference Duration (Average)",
       "targets": [
         {
-          "expr": "rate(llm_inference_duration_seconds_sum[1m]) / rate(llm_inference_duration_seconds_count[1m])",
+          "expr": "rate(llm_inference_duration_seconds_sum[5m]) / rate(llm_inference_duration_seconds_count[5m])",
           "legendFormat": "{{model}} (avg)",
           "refId": "C"
         }
@@ -97,7 +97,7 @@
       "title": "LLM Inference Request Count",
       "targets": [
         {
-          "expr": "rate(llm_inference_duration_seconds_count[1m])",
+          "expr": "rate(llm_inference_duration_seconds_count[5m])",
           "legendFormat": "{{model}}",
           "refId": "D"
         }
