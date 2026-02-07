@@ -39,6 +39,7 @@ from langchain.agents.middleware import (
     dynamic_prompt,
     wrap_model_call,
 )
+from langchain_openai import ChatOpenAI
 from langgraph.runtime import Runtime
 
 from app.core.config import settings
@@ -97,7 +98,7 @@ _ADMIN_ONLY_TOOLS: Set[str] = {"create_skill", "update_skill"}
 
 
 @wrap_model_call
-def role_based_tool_filter(
+async def role_based_tool_filter(
     request: ModelRequest,
     handler: Callable[[ModelRequest], ModelResponse],
 ) -> ModelResponse:
@@ -105,6 +106,8 @@ def role_based_tool_filter(
 
     Admin users get all tools; regular users cannot access create_skill
     and update_skill. This is a transient filter — does not modify state.
+
+    Must be async because the agent uses astream()/ainvoke().
 
     Ref: https://docs.langchain.com/oss/python/langchain/context-engineering
     """
@@ -121,7 +124,7 @@ def role_based_tool_filter(
             )
             request = request.override(tools=filtered)
 
-    return handler(request)
+    return await handler(request)
 
 
 # ─── HITL Approval Middleware ──────────────────────────────────────
@@ -154,8 +157,8 @@ class HITLApprovalMiddleware(AgentMiddleware):
         name_lower = tool_name.lower()
         return any(pattern in name_lower for pattern in self.sensitive_patterns)
 
-    def wrap_tool_call(self, request, handler):
-        """Intercept sensitive tool calls for human approval.
+    def _handle_tool_call(self, request, handler, is_async: bool = False):
+        """Core logic for intercepting sensitive tool calls.
 
         For sensitive tools, creates an approval request and returns
         a message indicating approval is needed instead of executing.
@@ -164,7 +167,7 @@ class HITLApprovalMiddleware(AgentMiddleware):
         tool_name = request.tool_call.get("name", "") if hasattr(request, "tool_call") else request.get("name", "")
 
         if not self._is_sensitive(tool_name):
-            return handler(request)
+            return None  # Signal caller to pass through
 
         # Sensitive tool detected — block and request approval
         ctx = None
@@ -190,6 +193,20 @@ class HITLApprovalMiddleware(AgentMiddleware):
             tool_call_id=request.tool_call.get("id", "") if hasattr(request, "tool_call") else "",
         )
 
+    def wrap_tool_call(self, request, handler):
+        """Intercept sensitive tool calls for human approval (sync)."""
+        result = self._handle_tool_call(request, handler)
+        if result is not None:
+            return result
+        return handler(request)
+
+    async def awrap_tool_call(self, request, handler):
+        """Intercept sensitive tool calls for human approval (async)."""
+        result = self._handle_tool_call(request, handler, is_async=True)
+        if result is not None:
+            return result
+        return await handler(request)
+
 
 # ─── Langfuse Tracing Middleware ───────────────────────────────────
 
@@ -212,12 +229,20 @@ class LangfuseTracingMiddleware(AgentMiddleware):
         )
         return None
 
+    async def awrap_tool_call(self, request, handler):
+        """Async passthrough — required for async agent context."""
+        return await handler(request)
+
 
 # ─── Prometheus Metrics Middleware ─────────────────────────────────
 
 
 class MetricsMiddleware(AgentMiddleware):
     """Track LLM inference duration with Prometheus metrics."""
+
+    async def awrap_tool_call(self, request, handler):
+        """Async passthrough — required for async agent context."""
+        return await handler(request)
 
     def wrap_model_call(
         self,
@@ -239,10 +264,7 @@ class MetricsMiddleware(AgentMiddleware):
         model_name = settings.DEFAULT_LLM_MODEL
 
         with llm_inference_duration_seconds.labels(model=model_name).time():
-            result = handler(request)
-            if hasattr(result, "__await__"):
-                return await result
-            return result
+            return await handler(request)
 
 
 # ─── Factory Functions ─────────────────────────────────────────────
@@ -285,9 +307,16 @@ def create_default_middleware(
 
     # 2. Summarization — auto-condense long conversation history
     if enable_summarization:
+        summ_model_name = summarization_model or settings.SUMMARIZATION_MODEL
+        summ_model = ChatOpenAI(
+            model=summ_model_name,
+            temperature=0,
+            api_key=settings.OPENAI_API_KEY,
+            **({"base_url": settings.OPENAI_API_BASE} if settings.OPENAI_API_BASE else {}),
+        )
         middlewares.append(
             SummarizationMiddleware(
-                model=summarization_model or settings.SUMMARIZATION_MODEL,
+                model=summ_model,
                 trigger=("tokens", summarization_trigger_tokens or settings.SUMMARIZATION_TRIGGER_TOKENS),
                 keep=("messages", summarization_keep_messages or settings.SUMMARIZATION_KEEP_MESSAGES),
             )

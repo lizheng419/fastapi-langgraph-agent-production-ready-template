@@ -239,7 +239,7 @@ class V1Agent(BaseAgentMixin):
 
             # Background memory update after streaming
             if user_id:
-                state: StateSnapshot = self._agent.get_state(config=config)
+                state: StateSnapshot = await self._agent.aget_state(config=config)
                 if state.values and "messages" in state.values:
                     asyncio.create_task(
                         self._update_long_term_memory(

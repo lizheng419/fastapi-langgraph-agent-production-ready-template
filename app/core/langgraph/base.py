@@ -113,6 +113,7 @@ class BaseAgentMixin:
                             "provider": "pgvector",
                             "config": {
                                 "collection_name": settings.LONG_TERM_MEMORY_COLLECTION_NAME,
+                                "embedding_model_dims": settings.LONG_TERM_MEMORY_EMBEDDER_DIMS,
                                 "connection_string": (
                                     f"postgresql://{quote_plus(settings.POSTGRES_USER)}:{quote_plus(settings.POSTGRES_PASSWORD)}"
                                     f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
@@ -121,11 +122,21 @@ class BaseAgentMixin:
                         },
                         "llm": {
                             "provider": "openai",
-                            "config": {"model": settings.LONG_TERM_MEMORY_MODEL},
+                            "config": {
+                                "model": settings.LONG_TERM_MEMORY_MODEL,
+                                **({"openai_base_url": settings.OPENAI_API_BASE} if settings.OPENAI_API_BASE else {}),
+                            },
                         },
                         "embedder": {
                             "provider": "openai",
-                            "config": {"model": settings.LONG_TERM_MEMORY_EMBEDDER_MODEL},
+                            "config": {
+                                "model": settings.LONG_TERM_MEMORY_EMBEDDER_MODEL,
+                                **(
+                                    {"openai_base_url": settings.LONG_TERM_MEMORY_EMBEDDER_BASE_URL}
+                                    if settings.LONG_TERM_MEMORY_EMBEDDER_BASE_URL
+                                    else {}
+                                ),
+                            },
                         },
                     }
                 )
