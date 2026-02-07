@@ -49,5 +49,9 @@ services:
       - monitoring
     restart: always
 
+networks:
+  monitoring:
+    driver: bridge
+
 volumes:
   grafana-storage:
