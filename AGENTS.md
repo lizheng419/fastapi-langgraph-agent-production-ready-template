@@ -87,11 +87,13 @@ This is a production-ready AI agent application built with:
 ### V1 Middleware Stack
 Located in `app/core/langgraph/v1/middleware.py` (follows official [Context Engineering](https://docs.langchain.com/oss/python/langchain/context-engineering) guide):
 - `@dynamic_prompt skills_aware_prompt` — dynamic system prompt with Skills + long-term memory
-- `SummarizationMiddleware` — auto-condense long conversation history (built-in)
-- `@wrap_model_call role_based_tool_filter` — dynamic tool selection by user role
-- `LangfuseTracingMiddleware` — auto Langfuse callback
-- `MetricsMiddleware` — Prometheus histogram timing
-- `HITLApprovalMiddleware` — sensitive tool interception
+- `SummarizationMiddleware` — auto-condense long conversation history (built-in, configurable via `SUMMARIZATION_*` env vars)
+- `@wrap_model_call role_based_tool_filter` (async) — dynamic tool selection by user role
+- `LangfuseTracingMiddleware` — auto Langfuse callback + async tool passthrough
+- `MetricsMiddleware` — Prometheus histogram timing + async tool passthrough
+- `HITLApprovalMiddleware` — sensitive tool interception (sync + async)
+
+**Important async rule**: All `AgentMiddleware` subclasses MUST provide both sync and async versions of `wrap_model_call`/`wrap_tool_call` (i.e., also implement `awrap_model_call`/`awrap_tool_call`), because the agent uses `astream()`/`ainvoke()`. Failing to do so causes `NotImplementedError` at runtime.
 
 ### Workflow Engine
 Located in `app/core/langgraph/workflow/`:
@@ -172,6 +174,8 @@ Located in `app/core/rag/`:
 - Use `AsyncMemory` for semantic memory storage
 - Store memories per user_id for personalized experiences
 - Use async methods: `add()`, `get()`, `search()`, `delete()`
+- Configure embedding dimensions via `LONG_TERM_MEMORY_EMBEDDER_DIMS` (e.g., 768 for `bge-base-zh-v1.5`, 1536 for OpenAI)
+- Always use `await agent.aget_state()` instead of sync `agent.get_state()` when using `AsyncPostgresSaver`
 
 ## Authentication & Security
 
@@ -220,6 +224,8 @@ Located in `app/core/rag/`:
 - MCP servers: `mcp_servers.json`
 - RAG providers: `rag_providers.json`
 - Workflow templates: `app/core/langgraph/workflow/templates/*.yaml`
+- Summarization: `SUMMARIZATION_MODEL`, `SUMMARIZATION_TRIGGER_TOKENS`, `SUMMARIZATION_KEEP_MESSAGES`
+- Embedder: `LONG_TERM_MEMORY_EMBEDDER_MODEL`, `LONG_TERM_MEMORY_EMBEDDER_BASE_URL`, `LONG_TERM_MEMORY_EMBEDDER_DIMS`
 
 ## Key Dependencies
 
@@ -273,6 +279,8 @@ Located in `app/core/rag/`:
 - ❌ Forgetting to add i18n keys to both `zh.json` and `en.json`
 - ❌ Using hardcoded API paths instead of `buildChatUrl()` in frontend
 - ❌ Creating skills without YAML frontmatter
+- ❌ Defining only sync `wrap_tool_call`/`wrap_model_call` without async `awrap_*` counterpart in `AgentMiddleware` subclasses
+- ❌ Using sync `agent.get_state()` instead of `await agent.aget_state()` with `AsyncPostgresSaver`
 
 ## When Making Changes
 

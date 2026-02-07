@@ -223,7 +223,7 @@ def _build_worker_middleware(self) -> list:
     return middlewares
 ```
 
-**注意**：Worker 的 Middleware 栈**不包含** `SystemPromptMiddleware`（Worker 有自己的专属系统提示词）。
+**注意**：Worker 的 Middleware 栈**不包含** `skills_aware_prompt`（Worker 有自己的专属系统提示词）。所有 `AgentMiddleware` 子类必须同时提供 sync 和 async 版本（`awrap_model_call`/`awrap_tool_call`），否则在 `astream()`/`ainvoke()` 时抛出 `NotImplementedError`。
 
 ### 6.3 _create_worker_agents()
 

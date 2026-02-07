@@ -258,9 +258,16 @@ DEFAULT_LLM_TEMPERATURE=0.7
 MAX_TOKENS=4096
 
 # Long-Term Memory
-LONG_TERM_MEMORY_COLLECTION_NAME=agent_memories
 LONG_TERM_MEMORY_MODEL=gpt-4o-mini
 LONG_TERM_MEMORY_EMBEDDER_MODEL=text-embedding-3-small
+LONG_TERM_MEMORY_EMBEDDER_BASE_URL=           # Custom embedding endpoint (empty = OpenAI)
+LONG_TERM_MEMORY_EMBEDDER_DIMS=1536           # 768 for bge-base-zh-v1.5, 1536 for OpenAI
+LONG_TERM_MEMORY_COLLECTION_NAME=longterm_memory
+
+# Summarization Middleware
+SUMMARIZATION_MODEL=gpt-4o-mini               # Model for conversation summarization
+SUMMARIZATION_TRIGGER_TOKENS=4000             # Trigger summarization at this token count
+SUMMARIZATION_KEEP_MESSAGES=20                # Keep last N messages after summarization
 
 # Observability
 LANGFUSE_PUBLIC_KEY=your_public_key
@@ -300,7 +307,7 @@ The LLM service provides robust, production-ready language model interactions wi
 
 ### Features
 
-- **Multiple Model Support**: Pre-configured support for GPT-4o, GPT-4o-mini, GPT-5, and GPT-5 variants
+- **Multiple Model Support**: Pre-configured support for GPT-4o, GPT-4o-mini, GPT-5, and GPT-5 variants; OpenAI-compatible APIs (DeepSeek, Qwen, etc.) via `OPENAI_API_BASE`
 - **Automatic Retries**: Uses tenacity for exponential backoff retry logic
 - **Reasoning Configuration**: GPT-5 models support configurable reasoning effort levels
 - **Environment-Specific Tuning**: Different parameters for development vs production
@@ -439,7 +446,7 @@ fastapi-langgraph-agent/
 │   │   │   ├── v1/
 │   │   │   │   ├── agent.py          # V1Agent (create_agent + Middleware)
 │   │   │   │   ├── multi_agent.py    # V1MultiAgent (Supervisor + Workers)
-│   │   │   │   └── middleware.py     # 5 composable Middleware classes
+│   │   │   │   └── middleware.py     # 6 composable Middleware (prompt/summarization/filter/tracing/metrics/HITL)
 │   │   │   └── workflow/
 │   │   │       ├── graph.py          # WorkflowGraph (Orchestrator-Worker)
 │   │   │       ├── planner.py        # WorkflowPlanner (YAML + LLM)

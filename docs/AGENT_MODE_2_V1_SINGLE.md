@@ -49,29 +49,32 @@ FastAPI 路由 (chatbot_v1.py)
 V1Agent.get_response() / get_stream_response()
    │
    ├─ _get_relevant_memory()          ← mem0 长期记忆检索
-   ├─ 构建 MemoryContext              ← 携带 user_id、session_id、记忆
+   ├─ 构建 AgentContext               ← 携带 user_id、session_id、记忆、user_role
    │
    ▼
 create_agent 实例.ainvoke() / astream()
    │
-   │  ┌──────── Middleware 栈（按顺序执行） ────────┐
-   │  │                                              │
-   │  │  1. SystemPromptMiddleware.before_model()    │
-   │  │     → 动态构建系统提示词（Skills + 记忆）     │
-   │  │                                              │
-   │  │  2. LongTermMemoryMiddleware.before_model()  │
-   │  │     → 注入长期记忆上下文                      │
-   │  │                                              │
-   │  │  3. LangfuseTracingMiddleware.before_model() │
-   │  │     → 记录追踪日志                            │
-   │  │                                              │
-   │  │  4. MetricsMiddleware.wrap_model_call()      │
-   │  │     → Prometheus 计时包装                     │
-   │  │                                              │
-   │  │  5. HITLApprovalMiddleware.wrap_tool_call()  │
-   │  │     → 敏感工具拦截审批                        │
-   │  │                                              │
-   │  └──────────────────────────────────────────────┘
+   │  ┌──────── Middleware 栈（按顺序执行） ──────────────┐
+   │  │                                                    │
+   │  │  1. @dynamic_prompt skills_aware_prompt             │
+   │  │     → 动态构建系统提示词（Skills + 长期记忆）       │
+   │  │                                                    │
+   │  │  2. SummarizationMiddleware                        │
+   │  │     → 自动摘要过长的对话历史（内置 LangChain 组件） │
+   │  │                                                    │
+   │  │  3. @wrap_model_call role_based_tool_filter (async) │
+   │  │     → 按用户角色动态过滤工具（admin 完整/user 受限）│
+   │  │                                                    │
+   │  │  4. LangfuseTracingMiddleware.before_model()       │
+   │  │     → 记录追踪日志                                  │
+   │  │                                                    │
+   │  │  5. MetricsMiddleware.awrap_model_call()           │
+   │  │     → Prometheus 计时包装                           │
+   │  │                                                    │
+   │  │  6. HITLApprovalMiddleware.awrap_tool_call()       │
+   │  │     → 敏感工具拦截审批                              │
+   │  │                                                    │
+   │  └────────────────────────────────────────────────────┘
    │
    │  ┌──────── Agent 内部循环（自动管理） ──────────┐
    │  │  LLM 推理 → tool_calls? → 执行工具 → 再推理  │
@@ -92,7 +95,7 @@ _update_long_term_memory()            ← 后台异步更新记忆
 | 文件路径 | 职责 |
 |---------|------|
 | `app/core/langgraph/v1/agent.py` | `V1Agent` 类：Agent 创建、记忆管理、响应处理 |
-| `app/core/langgraph/v1/middleware.py` | 5 个 Middleware 实现 + `create_default_middleware()` 工厂函数 |
+| `app/core/langgraph/v1/middleware.py` | 6 个 Middleware 实现 + `create_default_middleware()` 工厂函数 |
 | `app/api/v1/chatbot_v1.py` | FastAPI 路由：支持 `?mode=single` / `?mode=multi` 切换 |
 | `app/services/llm.py` | `LLMRegistry`：模型注册与获取 |
 | `app/core/prompts.py` | `load_system_prompt()`：系统提示词模板 |
@@ -121,93 +124,102 @@ class AgentMiddleware:
         """包装工具调用。可用于拦截、审批等。"""
 ```
 
-### 5.2 五层 Middleware 栈
+### 5.2 六层 Middleware 栈
 
-#### ① SystemPromptMiddleware
+> **重要**：所有 Middleware 必须同时提供同步和异步版本（`wrap_model_call` + `awrap_model_call`、`wrap_tool_call` + `awrap_tool_call`），因为 Agent 使用 `astream()`/`ainvoke()` 异步调用。
+
+#### ① @dynamic_prompt skills_aware_prompt
 
 ```python
-class SystemPromptMiddleware(AgentMiddleware):
-    def before_model(self, state, runtime):
-        ctx = getattr(runtime, "context", None)
-        memory_text = getattr(ctx, "relevant_memory", "") if ctx else ""
-        system_prompt = load_system_prompt(long_term_memory=memory_text)
-        return {"system_prompt": system_prompt}
+@dynamic_prompt
+def skills_aware_prompt(request: ModelRequest) -> str:
+    ctx = getattr(request.runtime, "context", None) if request.runtime else None
+    memory_text = getattr(ctx, "relevant_memory", "") if ctx else ""
+    return load_system_prompt(long_term_memory=memory_text)
 ```
 
-- **触发时机**：每次 LLM 调用前
+- **类型**：`@dynamic_prompt` 装饰器函数（非 AgentMiddleware 子类）
 - **功能**：加载 Skills 描述 + 长期记忆 → 构建完整系统提示词
 - **始终启用**（不可通过配置关闭）
 
-#### ② LongTermMemoryMiddleware
+#### ② SummarizationMiddleware（内置）
 
 ```python
-class LongTermMemoryMiddleware(AgentMiddleware):
-    def before_model(self, state, runtime):
-        ctx = getattr(runtime, "context", None)
-        memory_text = getattr(ctx, "relevant_memory", "")
-        # 记忆已通过 MemoryContext 传入，此处可用于额外处理
-        return None
+SummarizationMiddleware(
+    model=ChatOpenAI(model=settings.SUMMARIZATION_MODEL, ...),
+    trigger=("tokens", settings.SUMMARIZATION_TRIGGER_TOKENS),  # 默认 4000
+    keep=("messages", settings.SUMMARIZATION_KEEP_MESSAGES),    # 默认 20
+)
 ```
 
-- **触发时机**：每次 LLM 调用前
-- **功能**：从 `runtime.context` 中读取预检索的记忆
+- **类型**：LangChain 内置 Middleware
+- **功能**：当对话 token 超过阈值时自动摘要旧消息，保留最近 N 条
+- **配置**：通过 `.env` 中 `SUMMARIZATION_MODEL`、`SUMMARIZATION_TRIGGER_TOKENS`、`SUMMARIZATION_KEEP_MESSAGES` 控制
 
-#### ③ LangfuseTracingMiddleware
+#### ③ @wrap_model_call role_based_tool_filter (async)
+
+```python
+@wrap_model_call
+async def role_based_tool_filter(request: ModelRequest, handler) -> ModelResponse:
+    user_role = getattr(request.runtime.context, "user_role", "user")
+    if user_role != "admin":
+        filtered = [t for t in request.tools if t.name not in _ADMIN_ONLY_TOOLS]
+        request = request.override(tools=filtered)
+    return await handler(request)
+```
+
+- **类型**：`@wrap_model_call` 装饰器 async 函数
+- **功能**：非 admin 用户无法使用 `create_skill`、`update_skill` 工具
+- **必须是 async**：因为 Agent 使用 `astream()`
+
+#### ④ LangfuseTracingMiddleware
 
 ```python
 class LangfuseTracingMiddleware(AgentMiddleware):
     def before_model(self, state, runtime):
-        ctx = getattr(runtime, "context", None) if runtime else None
-        logger.debug("langfuse_before_model",
-            user_id=getattr(ctx, "user_id", None),
-            session_id=getattr(ctx, "session_id", None))
+        # 记录 debug 日志，配合 Langfuse 自动检测
+        logger.debug("langfuse_before_model", ...)
         return None
+
+    async def awrap_tool_call(self, request, handler):
+        return await handler(request)  # async passthrough
 ```
 
 - **触发时机**：每次 LLM 调用前
-- **功能**：记录 debug 日志，配合 API 层的 `@observe` 和 Langfuse 自动检测
+- **功能**：记录 debug 日志，配合 API 层的 Langfuse CallbackHandler
 
-#### ④ MetricsMiddleware
+#### ⑤ MetricsMiddleware
 
 ```python
 class MetricsMiddleware(AgentMiddleware):
-    def wrap_model_call(self, request, handler):
-        with llm_inference_duration_seconds.labels(model=settings.DEFAULT_LLM_MODEL).time():
-            return handler(request)
-
     async def awrap_model_call(self, request, handler):
-        with llm_inference_duration_seconds.labels(model=settings.DEFAULT_LLM_MODEL).time():
-            result = handler(request)
-            if hasattr(result, "__await__"):
-                return await result
-            return result
+        with llm_inference_duration_seconds.labels(model=...).time():
+            return await handler(request)
+
+    async def awrap_tool_call(self, request, handler):
+        return await handler(request)  # async passthrough
 ```
 
 - **触发时机**：包装每次 LLM 调用
 - **功能**：Prometheus histogram 自动计时
-- 同时提供同步和异步版本
+- 同时提供 `wrap_model_call`（sync）和 `awrap_model_call`（async）
 
-#### ⑤ HITLApprovalMiddleware
+#### ⑥ HITLApprovalMiddleware
 
 ```python
 class HITLApprovalMiddleware(AgentMiddleware):
     sensitive_patterns = ["delete", "modify", "update", "write", "execute_sql", "send_email"]
 
-    def wrap_tool_call(self, request, handler):
-        tool_name = request.tool_call.get("name", "")
+    async def awrap_tool_call(self, request, handler):
         if not self._is_sensitive(tool_name):
-            return handler(request)  # 非敏感工具直接执行
-
-        # 敏感工具：返回拦截消息
-        return ToolMessage(
-            content=f"🔒 Action `{tool_name}` requires human approval...",
-            tool_call_id=request.tool_call.get("id", ""),
-        )
+            return await handler(request)  # 非敏感工具直接执行
+        return ToolMessage(content=f"🔒 Action `{tool_name}` requires human approval...")
 ```
 
 - **触发时机**：每次工具调用
 - **功能**：匹配敏感模式 → 拦截执行 → 返回审批提示
 - **可自定义模式**：通过 `sensitive_patterns` 参数
+- 同时提供 `wrap_tool_call`（sync）和 `awrap_tool_call`（async）
 
 ### 5.3 Middleware 执行顺序
 
@@ -215,23 +227,26 @@ class HITLApprovalMiddleware(AgentMiddleware):
 请求进入
   │
   ▼
-SystemPromptMiddleware.before_model()    ← 构建系统提示词
+skills_aware_prompt (@dynamic_prompt)       ← 构建系统提示词（Skills + 记忆）
   │
   ▼
-LongTermMemoryMiddleware.before_model()  ← 记忆注入
+SummarizationMiddleware (内置)              ← 对话历史超长时自动摘要
   │
   ▼
-LangfuseTracingMiddleware.before_model() ← 追踪日志
+role_based_tool_filter (@wrap_model_call)   ← 按角色过滤工具
   │
   ▼
-MetricsMiddleware.wrap_model_call()      ← 开始计时
+LangfuseTracingMiddleware.before_model()    ← 追踪日志
+  │
+  ▼
+MetricsMiddleware.awrap_model_call()        ← 开始计时
   │  ┌─────────────────────┐
   │  │   LLM 推理执行       │
   │  └─────────────────────┘
-  │                                       ← 结束计时
+  │                                          ← 结束计时
   ▼
 如果有 tool_calls:
-  HITLApprovalMiddleware.wrap_tool_call() ← 检查是否需要审批
+  HITLApprovalMiddleware.awrap_tool_call()   ← 检查是否需要审批
   │  ├─ 非敏感 → 正常执行工具
   │  └─ 敏感 → 返回审批消息
   ▼
@@ -252,21 +267,25 @@ class V1AgentConfig:
     enable_memory: bool = True                  # 启用长期记忆
     enable_tracing: bool = True                 # 启用 Langfuse 追踪
     enable_metrics: bool = True                 # 启用 Prometheus 指标
+    enable_summarization: bool = True           # 启用对话摘要
+    enable_tool_filter: bool = True             # 启用角色工具过滤
     sensitive_patterns: Optional[List[str]] = None  # 自定义敏感模式
 ```
 
-### 6.2 MemoryContext
+### 6.2 AgentContext
 
 ```python
 @dataclass
-class MemoryContext:
+class AgentContext:
     user_id: str = ""
     session_id: str = ""
     relevant_memory: str = ""
+    user_role: str = "user"    # "admin" 可解锁全部工具
 ```
 
 - 作为 `context_schema` 传入 `create_agent()`
 - Middleware 通过 `runtime.context` 访问
+- `user_role` 控制 `role_based_tool_filter` 的工具过滤行为
 
 ### 6.3 V1Agent._create_agent()
 
@@ -278,9 +297,10 @@ async def _create_agent(self):
     # 2. 构建 Middleware 栈
     middleware = create_default_middleware(
         enable_hitl=self._config.enable_hitl,
-        enable_memory=self._config.enable_memory,
         enable_tracing=self._config.enable_tracing,
         enable_metrics=self._config.enable_metrics,
+        enable_summarization=self._config.enable_summarization,
+        enable_tool_filter=self._config.enable_tool_filter,
         sensitive_patterns=self._config.sensitive_patterns,
     )
 
@@ -296,7 +316,7 @@ async def _create_agent(self):
         tools=self._all_tools,         # 内置 + MCP 工具
         middleware=middleware,          # Middleware 栈
         checkpointer=checkpointer,     # PostgreSQL 持久化
-        context_schema=MemoryContext,   # 运行时上下文类型
+        context_schema=AgentContext,    # 运行时上下文类型（含 user_role）
         name="V1 Agent",               # Agent 名称
     )
 ```
@@ -318,7 +338,7 @@ async def get_response(self, messages, session_id, user_id=None):
     relevant_memory = await self._get_relevant_memory(user_id, messages[-1].content)
 
     # 3. 构建运行时上下文
-    context = MemoryContext(
+    context = AgentContext(
         user_id=user_id or "",
         session_id=session_id,
         relevant_memory=relevant_memory,
@@ -334,7 +354,7 @@ async def get_response(self, messages, session_id, user_id=None):
     response = await self._agent.ainvoke(
         {"messages": input_messages},
         config=config,
-        context=context,    # ← MemoryContext 传递给 Middleware
+        context=context,    # ← AgentContext 传递给 Middleware
     )
 
     # 6. 后台更新记忆
@@ -364,9 +384,10 @@ V1Agent.get_response(messages, session_id, user_id)  # agent.py:237
   │
   ├─ _create_agent()                             # agent.py:194（首次调用）
   │   ├─ _initialize_mcp_tools()                 # 加载 MCP 工具
-  │   ├─ create_default_middleware()              # middleware.py:228
-  │   │   ├─ SystemPromptMiddleware()
-  │   │   ├─ LongTermMemoryMiddleware()
+  │   ├─ create_default_middleware()              # middleware.py
+  │   │   ├─ skills_aware_prompt (@dynamic_prompt)
+  │   │   ├─ SummarizationMiddleware (内置)
+  │   │   ├─ role_based_tool_filter (@wrap_model_call, async)
   │   │   ├─ LangfuseTracingMiddleware()
   │   │   ├─ MetricsMiddleware()
   │   │   └─ HITLApprovalMiddleware()
@@ -378,17 +399,18 @@ V1Agent.get_response(messages, session_id, user_id)  # agent.py:237
   ├─ _get_relevant_memory(user_id, query)        # agent.py:171
   │   └─ mem0.search()
   │
-  ├─ MemoryContext(user_id, session_id, relevant_memory)
+  ├─ AgentContext(user_id, session_id, relevant_memory, user_role)
   │
   ▼
 agent.ainvoke({messages}, config, context)       # LangChain v1 Agent 执行
   │
-  │  ┌──── Middleware 执行 ────────────────────┐
-  │  │ SystemPromptMiddleware.before_model()   │ → 动态系统提示词
-  │  │ LongTermMemoryMiddleware.before_model() │ → 记忆注入
-  │  │ LangfuseTracingMiddleware.before_model()│ → 追踪
-  │  │ MetricsMiddleware.wrap_model_call()     │ → Prometheus 计时
-  │  └────────────────────────────────────────┘
+  │  ┌──── Middleware 执行 ───────────────────────────┐
+  │  │ skills_aware_prompt (@dynamic_prompt)      │ → 动态系统提示词
+  │  │ SummarizationMiddleware                    │ → 对话摘要
+  │  │ role_based_tool_filter (@wrap_model_call)   │ → 工具过滤
+  │  │ LangfuseTracingMiddleware.before_model()    │ → 追踪
+  │  │ MetricsMiddleware.awrap_model_call()        │ → Prometheus 计时
+  │  └───────────────────────────────────────────────┘
   │
   │  ┌──── Agent 内部循环（自动） ─────────────┐
   │  │ LLM 推理 → 有 tool_calls?              │
@@ -434,7 +456,7 @@ agent.astream({messages}, config, context, stream_mode="messages")
   │
   ▼
 流结束:
-  ├─ agent.get_state(config) 获取最终状态
+  ├─ await agent.aget_state(config) 获取最终状态
   ├─ asyncio.create_task(_update_long_term_memory())
   └─ yield f"data: {json.dumps({content='', done=True})}\n\n"
 ```
@@ -462,7 +484,7 @@ agent.astream({messages}, config, context, stream_mode="messages")
 用户: "解释一下 Python 的装饰器"
 
 Middleware 执行:
-  SystemPromptMiddleware → 加载 Skills + 记忆 → 系统提示词
+  skills_aware_prompt → 加载 Skills + 记忆 → 系统提示词
   MetricsMiddleware → 开始计时
 
 Agent 内部:
@@ -479,12 +501,12 @@ Agent 内部:
 用户: "删除数据库中 ID 为 123 的用户"
 
 Middleware 执行:
-  SystemPromptMiddleware → 系统提示词
+  skills_aware_prompt → 系统提示词
   MetricsMiddleware → 计时
 
 Agent 内部:
   LLM 推理 → tool_calls: [delete_user(id=123)]
-  HITLApprovalMiddleware.wrap_tool_call():
+  HITLApprovalMiddleware.awrap_tool_call():
     → "delete" 匹配 sensitive_patterns
     → 返回 ToolMessage("🔒 Action `delete_user` requires human approval...")
   LLM 收到审批消息 → 生成友好回复
@@ -541,10 +563,12 @@ config = V1AgentConfig(
     enable_memory=False,
     enable_tracing=False,
     enable_metrics=False,
+    enable_summarization=False,
+    enable_tool_filter=False,
 )
 ```
 
-此时 Middleware 栈仅包含 `SystemPromptMiddleware`（始终启用）。
+此时 Middleware 栈仅包含 `skills_aware_prompt`（始终启用）。
 
 ---
 
@@ -581,13 +605,13 @@ class RateLimitMiddleware(AgentMiddleware):
 ```python
 def create_default_middleware(...) -> List[AgentMiddleware]:
     middlewares = []
-    middlewares.append(SystemPromptMiddleware())  # 始终启用
+    middlewares.append(skills_aware_prompt)  # 始终启用
 
     # 添加自定义 Middleware
     middlewares.append(RateLimitMiddleware(max_calls_per_minute=20))
 
-    if enable_memory:
-        middlewares.append(LongTermMemoryMiddleware())
+    if enable_summarization:
+        middlewares.append(SummarizationMiddleware(...))
     # ... 其余 Middleware
     return middlewares
 ```
@@ -596,7 +620,7 @@ def create_default_middleware(...) -> List[AgentMiddleware]:
 
 | 需求 | 使用钩子 | 示例 |
 |------|---------|------|
-| 修改系统提示词 | `before_model` | SystemPromptMiddleware |
+| 修改系统提示词 | `@dynamic_prompt` | skills_aware_prompt |
 | 记录调用日志 | `before_model` / `after_model` | LangfuseTracingMiddleware |
 | 包装 LLM 调用（计时、重试） | `wrap_model_call` | MetricsMiddleware |
 | 拦截工具执行 | `wrap_tool_call` | HITLApprovalMiddleware |
@@ -612,5 +636,5 @@ def create_default_middleware(...) -> List[AgentMiddleware]:
 
 ---
 
-> **文档版本**: 1.0
+> **文档版本**: 2.0 (2026-02-07 更新 Middleware 栈)
 > **对应源文件**: `app/core/langgraph/v1/agent.py` · `app/core/langgraph/v1/middleware.py` · `app/api/v1/chatbot_v1.py`

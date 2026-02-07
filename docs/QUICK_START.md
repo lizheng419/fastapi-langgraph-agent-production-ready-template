@@ -220,6 +220,13 @@ QDRANT_PORT=6333
 # 长期记忆模型
 LONG_TERM_MEMORY_MODEL=gpt-4o-mini
 LONG_TERM_MEMORY_EMBEDDER_MODEL=text-embedding-3-small
+LONG_TERM_MEMORY_EMBEDDER_BASE_URL=   # 自定义 Embedding 端点（留空=使用 OpenAI）
+LONG_TERM_MEMORY_EMBEDDER_DIMS=1536   # 768 适用于 bge-base-zh-v1.5，1536 适用于 OpenAI
+
+# 对话摘要（自动压缩过长的对话历史）
+SUMMARIZATION_MODEL=gpt-4o-mini       # 用于摘要的模型
+SUMMARIZATION_TRIGGER_TOKENS=4000     # 触发摘要的 token 阈值
+SUMMARIZATION_KEEP_MESSAGES=20        # 摘要后保留最近 N 条消息
 ```
 
 ---

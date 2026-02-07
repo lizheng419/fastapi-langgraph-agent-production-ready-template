@@ -525,7 +525,14 @@ QDRANT_API_KEY=               # 如有认证填写
 # 长期记忆设置 (可选)
 LONG_TERM_MEMORY_MODEL=gpt-4o-mini
 LONG_TERM_MEMORY_EMBEDDER_MODEL=text-embedding-3-small
+LONG_TERM_MEMORY_EMBEDDER_BASE_URL=   # 自定义 Embedding 端点（留空=使用 OpenAI）
+LONG_TERM_MEMORY_EMBEDDER_DIMS=1536   # 768 适用于 bge-base-zh-v1.5，1536 适用于 OpenAI
 LONG_TERM_MEMORY_COLLECTION_NAME=longterm_memory
+
+# 对话摘要 Middleware 设置 (可选)
+SUMMARIZATION_MODEL=gpt-4o-mini       # 用于摘要的模型
+SUMMARIZATION_TRIGGER_TOKENS=4000     # 触发摘要的 token 阈值
+SUMMARIZATION_KEEP_MESSAGES=20        # 摘要后保留最近 N 条消息
 ```
 
 > **注意**：长期记忆（mem0ai）使用主 PostgreSQL 数据库的同一连接（`POSTGRES_*`），不需要单独的数据库实例。
@@ -781,10 +788,11 @@ print("V1 Multi:", response.json()["messages"])
 - **Middleware 栈**遵循官方 [Context Engineering](https://docs.langchain.com/oss/python/langchain/context-engineering) 指南：
   - `@dynamic_prompt skills_aware_prompt` — 动态构建含 Skills + 长期记忆的系统提示词
   - `SummarizationMiddleware` — 自动压缩长对话历史，防止 context 溢出（内置）
-  - `@wrap_model_call role_based_tool_filter` — 按用户角色动态过滤工具集
-  - `LangfuseTracingMiddleware` — 记录模型调用事件（logging-only）；实际追踪由 config 层 `LangfuseCallbackHandler` 完成
-  - `MetricsMiddleware` — Prometheus 推理耗时打点（含 `awrap_model_call` 异步支持）
-  - `HITLApprovalMiddleware` — 拦截敏感工具调用，要求人工审批
+  - `@wrap_model_call role_based_tool_filter` (async) — 按用户角色动态过滤工具集
+  - `LangfuseTracingMiddleware` — 记录模型调用事件 + `awrap_tool_call` async passthrough
+  - `MetricsMiddleware` — Prometheus 推理耗时打点（`wrap_model_call` + `awrap_model_call` + `awrap_tool_call`）
+  - `HITLApprovalMiddleware` — 拦截敏感工具调用（`wrap_tool_call` + `awrap_tool_call`）
+- **重要**：所有 `AgentMiddleware` 子类必须同时提供 sync 和 async 版本，否则在 `astream()`/`ainvoke()` 时抛出 `NotImplementedError`
 - Langfuse 追踪通过 `get_stream_response()` 中 `config["callbacks"]` 注入 `LangfuseCallbackHandler()`
 - MCP 工具自动集成
 - PostgreSQL 检查点持久化（使用 `aget_state()` 异步 API）

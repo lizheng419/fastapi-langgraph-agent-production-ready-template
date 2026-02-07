@@ -1073,7 +1073,7 @@ app/main.py                              FastAPI app 启动
 
   app/core/langgraph/v1/agent.py          V1Agent (via Middleware)
     │
-    ├─ SystemPromptMiddleware             Skills 描述已注入 system prompt（含 Available Skills 列表）
+    ├─ skills_aware_prompt (@dynamic_prompt) Skills 描述已注入 system prompt（含 Available Skills 列表）
     ├─ prepare_messages()
     ├─ LLMService.call(messages)         LLM 返回 tool_calls: [create_skill]
     │
