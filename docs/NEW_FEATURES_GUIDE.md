@@ -2343,10 +2343,10 @@ V1 Agent 的 `MetricsMiddleware` 自动完成此操作。
 rate(http_requests_total[5m])
 
 # LLM 推理 P95 延迟
-histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[1m]))
+histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[5m]))
 
 # LLM 流式推理平均耗时
-rate(llm_stream_duration_seconds_sum[1m]) / rate(llm_stream_duration_seconds_count[1m])
+rate(llm_stream_duration_seconds_sum[5m]) / rate(llm_stream_duration_seconds_count[5m])
 ```
 
 3. 本地验证指标暴露：直接访问 **http://localhost:8000/metrics** 查看原始 Prometheus 格式输出
@@ -2402,10 +2402,10 @@ Grafana 启动时自动扫描 `json/` 目录中的 JSON 文件并导入为仪表
 
 | 面板 | PromQL 查询 | 说明 |
 |------|------------|------|
-| LLM Inference Duration (p95) | `histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[1m]))` | 非流式推理 P95 延迟，按模型分组 |
-| LLM Stream Duration (p95) | `histogram_quantile(0.95, rate(llm_stream_duration_seconds_bucket[1m]))` | 流式推理 P95 延迟，按模型分组 |
-| LLM Inference Duration (avg) | `rate(…_sum[1m]) / rate(…_count[1m])` | 非流式推理平均延迟 |
-| LLM Inference Request Count | `rate(llm_inference_duration_seconds_count[1m])` | 每分钟推理请求数，按模型分组 |
+| LLM Inference Duration (p95) | `histogram_quantile(0.95, rate(llm_inference_duration_seconds_bucket[5m]))` | 非流式推理 P95 延迟，按模型分组 |
+| LLM Stream Duration (p95) | `histogram_quantile(0.95, rate(llm_stream_duration_seconds_bucket[5m]))` | 流式推理 P95 延迟，按模型分组 |
+| LLM Inference Duration (avg) | `rate(…_sum[5m]) / rate(…_count[5m])` | 非流式推理平均延迟 |
+| LLM Inference Request Count | `rate(llm_inference_duration_seconds_count[5m])` | 每分钟推理请求数，按模型分组 |
 
 仪表板自动刷新间隔：**10 秒**。
 
@@ -2420,37 +2420,35 @@ Grafana 启动时自动扫描 `json/` 目录中的 JSON 文件并导入为仪表
 
 3. 左侧导航 → **Dashboards** → 找到 **"LLM Inference Latency"**
 
-4. Prometheus 数据源已在 Docker Compose 中自动配置，无需手动添加
+4. Prometheus 数据源已通过 `grafana/provisioning/datasources/datasource.yml` 自动配置（uid: `prometheus`），无需手动添加
 
 ### 18.5 添加自定义仪表板
 
 **方式 1：JSON 文件**
 
-在 `grafana/dashboards/json/` 目录创建新的 `.json` 文件，格式：
+在 `grafana/dashboards/json/` 目录创建新的 `.json` 文件。**注意**：文件 provisioning 要求 JSON 直接是 dashboard 对象（不需要外层 `{"dashboard": {...}}` 包装），面板类型使用 `timeseries`（`graph` 已弃用），数据源使用 UID 引用：
 
 ```json
 {
-  "dashboard": {
-    "id": null,
-    "uid": "my-dashboard",
-    "title": "My Custom Dashboard",
-    "panels": [
-      {
-        "type": "graph",
-        "title": "Panel Title",
-        "targets": [
-          {
-            "expr": "your_promql_query",
-            "legendFormat": "{{label}}",
-            "refId": "A"
-          }
-        ],
-        "datasource": "Prometheus",
-        "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 }
-      }
-    ]
-  },
-  "overwrite": true
+  "id": null,
+  "uid": "my-dashboard",
+  "title": "My Custom Dashboard",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Panel Title",
+      "targets": [
+        {
+          "expr": "your_promql_query",
+          "legendFormat": "{{label}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 9 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+    }
+  ]
 }
 ```
 

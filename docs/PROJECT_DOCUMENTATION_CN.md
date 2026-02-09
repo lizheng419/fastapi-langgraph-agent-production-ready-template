@@ -894,12 +894,14 @@ register_worker(
 - 开发环境: 彩色控制台输出
 - 生产环境: JSON 格式
 
-### 8.2 指标 (Prometheus)
+### 8.2 指标 (Prometheus + Grafana)
 
 - API 请求延迟
-- LLM 调用延迟
+- LLM 调用延迟（`llm_inference_duration_seconds`、`llm_stream_duration_seconds`）
 - 速率限制统计
 - 数据库连接状态
+
+**Grafana 仪表板**：`grafana/dashboards/json/llm_latency.json` 预置 4 个面板（P95 延迟、流式 P95、平均延迟、请求频率），通过 provisioning 自动加载。数据源 `grafana/provisioning/datasources/datasource.yml` 自动配置 Prometheus（uid: `prometheus`）。
 
 ### 8.3 追踪 (Langfuse)
 
