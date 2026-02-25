@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Send, LogOut, ShieldCheck, User, Loader2, Plus, Globe, ChevronDown, Zap, Users, Workflow, Cpu, MessageSquare, Trash2, PanelLeftClose, PanelLeft, WifiOff, RefreshCw } from 'lucide-react'
+import { Send, LogOut, ShieldCheck, User, Loader2, Plus, Globe, ChevronDown, Zap, Users, Workflow, Cpu, MessageSquare, Trash2, PanelLeftClose, PanelLeft, WifiOff, RefreshCw, FileText } from 'lucide-react'
 import { streamMessage, createSession, getWorkflowTemplates, getMessages, getSessions, deleteSession, isNetworkError } from '../api'
 import { useLanguage } from '../i18n/LanguageContext'
 import MarkdownRenderer from '../components/MarkdownRenderer'
@@ -261,6 +261,12 @@ export default function ChatPage({ auth, setAuth, onLogout }) {
           </div>
           <div className="p-3 border-t border-gray-700 space-y-1">
             <button
+              onClick={() => navigate('/knowledge')}
+              className="w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <FileText className="w-4 h-4" /> {t('chat.knowledge')}
+            </button>
+            <button
               onClick={() => navigate('/approvals')}
               className="w-full px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg flex items-center gap-2 transition-colors"
             >
@@ -352,6 +358,14 @@ export default function ChatPage({ auth, setAuth, onLogout }) {
               className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg flex items-center gap-1 transition-colors"
             >
               <Globe className="w-3.5 h-3.5" /> {t(`language.${lang === 'zh' ? 'en' : 'zh'}`)}
+            </button>
+            <div className="w-px h-5 bg-gray-200" />
+            <button
+              onClick={onLogout}
+              className="px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-1 transition-colors"
+              title={t('chat.logout')}
+            >
+              <LogOut className="w-3.5 h-3.5" /> {t('chat.logout')}
             </button>
           </div>
         </header>

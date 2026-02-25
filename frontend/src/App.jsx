@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import ChatPage from './pages/ChatPage'
 import ApprovalsPage from './pages/ApprovalsPage'
+import KnowledgePage from './pages/KnowledgePage'
 import { setAuthErrorHandler, validateToken } from './api'
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<ChatPage auth={auth} setAuth={setAuth} onLogout={logout} />} />
       <Route path="/approvals" element={<ApprovalsPage auth={auth} onLogout={logout} />} />
+      <Route path="/knowledge" element={<KnowledgePage auth={auth} onLogout={logout} />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

@@ -17,8 +17,9 @@ This is a production-ready AI agent application built with:
 - **Workflow Engine** for multi-step orchestrated workflows
 - **V1 Agent** with composable Middleware stack
 - **RAG** pluggable knowledge base retrieval (Qdrant, pgvector, RAGFlow, Dify, FastGPT, custom HTTP)
+- **RAG Document Ingestion** — frontend upload → PDF/TXT/MD/DOCX parsing → chunking → embedding → Qdrant storage
 - **Qdrant** vector database for RAG integration
-- **React Frontend** with agent mode selector and i18n
+- **React Frontend** with agent mode selector, knowledge base management, and i18n
 
 ## Quick Reference: Critical Rules
 
@@ -144,6 +145,15 @@ Located in `app/core/rag/`:
 | `RAGFlowRetriever` | `ragflow` | External RAGFlow (dataset retrieval + OpenAI-compatible chat) |
 | `GenericHTTPRetriever` | `http` | Any REST API (Dify, FastGPT, custom systems) |
 
+### RAG Document Ingestion
+
+Located in `app/core/rag/ingest.py`:
+- **Pipeline**: Frontend upload → parse (PDF/TXT/MD/DOCX) → chunk (1000 chars, 200 overlap) → embed → Qdrant upsert
+- **API routes**: `app/api/v1/rag.py` — `POST /upload`, `GET /documents`, `DELETE /documents/{doc_id}`
+- **Frontend**: `KnowledgePage.jsx` at `/knowledge` — drag-and-drop upload, document list, delete
+- **Embedding**: Reuses `LONG_TERM_MEMORY_EMBEDDER_MODEL` / `LONG_TERM_MEMORY_EMBEDDER_DIMS` from `.env`
+- **Dependencies**: `pypdf`, `python-docx`, `langchain-text-splitters`
+
 ## MCP Integration
 
 - Configuration: `mcp_servers.json` (SSE and stdio transports)
@@ -248,6 +258,9 @@ Located in `app/core/rag/`:
 - **httpx** - Async HTTP client for external RAG APIs
 - **langchain-postgres** - pgvector LangChain integration
 - **asyncpg** - Async PostgreSQL driver
+- **pypdf** - PDF document parsing
+- **python-docx** - DOCX document parsing
+- **langchain-text-splitters** - Text chunking for RAG ingestion
 - **React 18** - Frontend UI framework
 - **TailwindCSS** - Frontend styling
 - **Lucide React** - Frontend icons

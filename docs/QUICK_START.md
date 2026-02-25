@@ -82,12 +82,53 @@ POSTGRES_PASSWORD=mypassword
 ```bash
 # 构建并启动全部服务（后端 + 数据库 + Qdrant + 前端 + 监控）
 docker compose up -d
-
-# 或仅启动基础设施（数据库 + Qdrant，适合本地开发）
-docker compose -f docker-compose-base.yml up -d
 ```
 
-### 3.3 服务端口一览
+### 3.3 按需启动（本地开发推荐）
+
+项目拆分为三个 Compose 文件，可按需组合：
+
+| 文件 | 包含服务 | 用途 |
+|------|----------|------|
+| `docker-compose-base.yml` | PostgreSQL + Qdrant | 基础设施（本地开发必备） |
+| `docker-compose-monitoring.yml` | Prometheus + Grafana + cAdvisor | 监控栈（可选） |
+| `docker-compose.yml` | 后端 API + 前端 + include 以上两者 | 完整部署 |
+
+**常用启动组合：**
+
+```bash
+# ① 仅数据库 + Qdrant（最轻量，本地开发后端/前端时使用）
+docker compose -f docker-compose-base.yml up -d
+
+# ② 数据库 + Qdrant + 监控（需要 Grafana 看指标时）
+docker compose -f docker-compose-base.yml -f docker-compose-monitoring.yml up -d
+
+# ③ 单独启动某个服务（例如只启动 Qdrant）
+docker compose -f docker-compose-base.yml up -d qdrant
+
+# ④ 单独启动 PostgreSQL
+docker compose -f docker-compose-base.yml up -d db
+
+# ⑤ 全部服务（后端 + 前端 + 数据库 + Qdrant + 监控）
+docker compose up -d
+```
+
+**单独停止某个服务：**
+
+```bash
+# 停止后端容器（保留数据库和 Qdrant 运行）
+docker compose stop app
+
+# 停止前端容器
+docker compose stop frontend
+
+# 停止 Grafana
+docker compose -f docker-compose-base.yml -f docker-compose-monitoring.yml stop grafana
+```
+
+> **本地开发典型流程**：先用 ① 启动数据库和 Qdrant，然后本地运行后端（`make dev` 或 `python run.py`）和前端（`npm run dev`），实现热重载开发。
+
+### 3.4 服务端口一览
 
 | 服务             | 地址                       | 说明                        |
 | ---------------- | -------------------------- | --------------------------- |
@@ -98,10 +139,20 @@ docker compose -f docker-compose-base.yml up -d
 | **Grafana**      | http://localhost:3000      | 可视化仪表盘（admin/admin） |
 | **Qdrant**       | http://localhost:6333      | 向量数据库                  |
 
-### 3.4 停止服务
+### 3.5 停止服务
 
 ```bash
+# 停止全部服务并移除容器
 docker compose down
+
+# 仅停止基础设施
+docker compose -f docker-compose-base.yml down
+
+# 停止基础设施 + 监控
+docker compose -f docker-compose-base.yml -f docker-compose-monitoring.yml down
+
+# 停止并清除数据卷（⚠️ 会删除数据库数据）
+docker compose down -v
 ```
 
 ---
@@ -374,7 +425,16 @@ Agent 在对话中可通过 `retrieve_knowledge` 工具自动检索相关知识�
 - 前端审批页面：http://localhost:3000/approvals
 - API 端点：`GET /api/v1/approvals/pending`
 
-### 9.5 长期记忆
+### 9.5 知识库管理（RAG 文档导入）
+
+前端侧边栏点击 **「知识库」** 进入文档管理页面（`/knowledge`），支持：
+- 拖拽或点击上传 **PDF / TXT / Markdown / DOCX** 文件（最大 50MB）
+- 上传后自动解析 → 文本切块 → 向量化 → 写入 Qdrant
+- 聊天中 Agent 通过 `retrieve_knowledge` 工具自动检索知识库内容
+
+API 端点：`POST /api/v1/rag/upload`、`GET /api/v1/rag/documents`、`DELETE /api/v1/rag/documents/{doc_id}`
+
+### 9.6 长期记忆
 
 Agent 自动提取对话中的重要信息，存储到 PostgreSQL（pgvector），在后续对话中根据语义相似度检索相关记忆。
 

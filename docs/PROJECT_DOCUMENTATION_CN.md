@@ -100,6 +100,7 @@ fastapi-langgraph-agent-production-ready-template/
 │   │   │   ├── schema.py         # RAGDocument, RetrievalQuery, RetrievalResult
 │   │   │   ├── base.py           # BaseRetriever 抽象基类（Provider 接口）
 │   │   │   ├── manager.py        # RetrieverManager（注册、并行检索、结果合并去重）
+│   │   │   ├── ingest.py         # 文档导入服务（解析→切块→向量化→Qdrant 写入）
 │   │   │   └── providers/        # Provider 实现
 │   │   │       ├── __init__.py   # PROVIDER_REGISTRY
 │   │   │       ├── qdrant.py     # QdrantRetriever（Qdrant 向量数据库）
@@ -153,7 +154,8 @@ fastapi-langgraph-agent-production-ready-template/
 │       └── pages/
 │           ├── LoginPage.jsx     # 登录/注册
 │           ├── ChatPage.jsx      # 聊天（SSE + 会话侧栏 + Markdown）
-│           └── ApprovalsPage.jsx # HITL 审批管理
+│           ├── ApprovalsPage.jsx # HITL 审批管理
+│           └── KnowledgePage.jsx # RAG 知识库管理（文档上传/列表/删除）
 ├── tests/                        # 测试套件
 ├── evals/                        # 模型评估框架
 ├── grafana/                      # Grafana 仪表板
@@ -398,7 +400,17 @@ fastapi-langgraph-agent-production-ready-template/
 | `/chat/stream` | POST | 流式执行 Workflow | Session Token |
 | `/templates` | GET | 列出可用 Workflow 模板 | Session Token |
 
-### 4.5 健康检查端点
+### 4.5 RAG 知识库端点 (`/api/v1/rag`)
+
+> 文档上传、解析、向量化、管理。上传的文档自动解析（PDF/TXT/MD/DOCX）→ 文本切块 → Embedding → 写入 Qdrant，供 Agent 通过 `retrieve_knowledge` 工具检索。
+
+| 端点 | 方法 | 描述 | 认证 |
+|------|------|------|------|
+| `/upload` | POST | 上传并导入文档（multipart/form-data） | Bearer Token |
+| `/documents` | GET | 列出已导入的文档 | Bearer Token |
+| `/documents/{doc_id}` | DELETE | 删除文档及其所有向量块 | Bearer Token |
+
+### 4.6 健康检查端点
 
 | 端点 | 方法 | 描述 |
 |------|------|------|

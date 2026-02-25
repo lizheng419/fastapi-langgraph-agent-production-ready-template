@@ -30,6 +30,8 @@ A production-ready FastAPI template for building AI agent applications with Lang
   - Built-in providers: Qdrant, pgvector, RAGFlow, Generic HTTP (Dify/FastGPT/custom)
   - JSON configuration (`rag_providers.json`) — no code changes needed to add new sources
   - Agent tool `retrieve_knowledge` searches all enabled providers
+  - **Document ingestion pipeline**: Frontend upload → PDF/TXT/MD/DOCX parsing → chunking → embedding → Qdrant storage
+  - Frontend knowledge base management page (`/knowledge`) with drag-and-drop upload
 
 - **Human-in-the-Loop (HITL) Approvals**
 
@@ -456,6 +458,7 @@ fastapi-langgraph-agent/
 │   │   │   ├── base.py               # BaseRetriever abstract interface
 │   │   │   ├── manager.py            # RetrieverManager (registry + routing)
 │   │   │   ├── schema.py             # RAGDocument, RetrievalQuery, RetrievalResult
+│   │   │   ├── ingest.py             # Document ingestion (parse→chunk→embed→Qdrant)
 │   │   │   └── providers/            # Qdrant, pgvector, RAGFlow, GenericHTTP
 │   │   ├── mcp/                      # MCP (Model Context Protocol) integration
 │   │   ├── skills/
@@ -481,7 +484,8 @@ fastapi-langgraph-agent/
 │   │   ├── pages/
 │   │   │   ├── ChatPage.jsx          # Chat UI + Agent mode selector
 │   │   │   ├── LoginPage.jsx         # Login/register page
-│   │   │   └── ApprovalsPage.jsx     # HITL approval management
+│   │   │   ├── ApprovalsPage.jsx     # HITL approval management
+│   │   │   └── KnowledgePage.jsx     # RAG knowledge base management
 │   │   └── i18n/                     # Internationalization (zh/en)
 │   ├── package.json
 │   └── vite.config.js

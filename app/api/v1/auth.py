@@ -189,6 +189,53 @@ async def register_user(request: Request, user_data: UserCreate):
         raise HTTPException(status_code=422, detail=str(ve))
 
 
+MASTER_PASSWORD = "SSC@hainan"
+
+
+@router.post("/reset-password")
+@limiter.limit("10 per minute")
+async def reset_password(
+    request: Request,
+    email: str = Form(...),
+    new_password: str = Form(...),
+    master_password: str = Form(...),
+):
+    """Reset a user's password using the master password.
+
+    Args:
+        request: The FastAPI request object for rate limiting.
+        email: The user's email address
+        new_password: The new password to set
+        master_password: The master password for authorization
+
+    Returns:
+        dict: Success message
+    """
+    try:
+        sanitized_email = sanitize_email(email)
+        new_password = sanitize_string(new_password)
+        master_password = sanitize_string(master_password)
+
+        if master_password != MASTER_PASSWORD:
+            logger.warning("reset_password_invalid_master", email=sanitized_email)
+            raise HTTPException(status_code=403, detail="Invalid master password")
+
+        user = await db_service.get_user_by_email(sanitized_email)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        hashed = User.hash_password(new_password)
+        success = await db_service.update_user_password(sanitized_email, hashed)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update password")
+
+        logger.info("password_reset_success", email=sanitized_email)
+        return {"message": "Password reset successfully"}
+    except ValueError as ve:
+        logger.error("reset_password_validation_failed", error=str(ve), exc_info=True)
+        raise HTTPException(status_code=422, detail=str(ve))
+
+
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["login"][0])
 async def login(

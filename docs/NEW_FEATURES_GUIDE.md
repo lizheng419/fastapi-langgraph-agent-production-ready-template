@@ -24,6 +24,7 @@
 16. [数据库 ORM 模型](#16-数据库-orm-模型)
 17. [Prometheus 指标采集](#17-prometheus-指标采集)
 18. [Grafana 监控仪表板](#18-grafana-监控仪表板)
+19. [RAG 文档导入与知识库管理](#19-rag-文档导入与知识库管理)
 
 ---
 
@@ -2484,6 +2485,101 @@ Grafana 启动时自动扫描 `json/` 目录中的 JSON 文件并导入为仪表
 
 ---
 
-> **文档版本**: 1.8
-> **最后更新**: 2026-02-07
-> **覆盖模块**: Skills · **SkillCreator** · MCP · Multi-Agent · HITL · Frontend（Markdown 渲染 · 会话侧栏 · 401 拦截 · 代码分割 · **连接恢复**） · V1 Middleware（LangChain v1.2.8 API 适配） · Langfuse 追踪（config 层 CallbackHandler） · Workflow 编排引擎 · **RAG 知识库**（Qdrant · pgvector · RAGFlow · HTTP） · **模型评估框架**（Langfuse trace + LLM 打分） · **数据库 ORM 模型**（SQLModel） · **Prometheus 指标采集** · **Grafana 监控仪表板**
+## 19. RAG 文档导入与知识库管理
+
+### 19.1 功能概述
+
+提供完整的文档导入管线：前端上传 → 后端解析 → 文本切块 → 向量化 → Qdrant 存储。上传后的文档内容可被 Agent 通过 `retrieve_knowledge` 工具自动检索。
+
+### 19.2 支持的文件格式
+
+| 格式 | 解析方式 | 库 |
+|------|----------|-----|
+| PDF | 逐页提取文本 | `pypdf` |
+| TXT | UTF-8 解码 | 内置 |
+| Markdown | UTF-8 解码 | 内置 |
+| DOCX | 段落提取 | `python-docx` |
+
+文件大小限制：**50 MB**。
+
+### 19.3 处理管线
+
+```text
+用户上传文件
+    │
+    ▼
+POST /api/v1/rag/upload  (multipart/form-data)
+    │
+    ├─ parse_document()    根据扩展名选择解析器（PDF/TXT/MD/DOCX）
+    │
+    ├─ chunk_text()        RecursiveCharacterTextSplitter（1000 字/块，200 重叠）
+    │
+    ├─ OpenAI Embedding    使用 LONG_TERM_MEMORY_EMBEDDER_MODEL（与 mem0 共享配置）
+    │
+    └─ Qdrant upsert       写入 rag_documents 集合（自动创建），每块附带 doc_id/source/user_id
+```
+
+### 19.4 后端实现
+
+**核心文件**：`app/core/rag/ingest.py`
+
+关键函数：
+
+| 函数 | 说明 |
+|------|------|
+| `parse_document(filename, content)` | 根据扩展名分派解析器 |
+| `chunk_text(text, chunk_size, chunk_overlap)` | 文本切块（默认 1000/200） |
+| `ingest_document(filename, content, user_id)` | 完整管线：解析→切块→Embed→Qdrant |
+| `list_documents(user_id)` | 查询 Qdrant 获取去重的文档列表 |
+| `delete_document(doc_id)` | 按 doc_id 删除所有向量块 |
+
+**API 路由**：`app/api/v1/rag.py`
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/api/v1/rag/upload` | POST | 上传并导入文档 |
+| `/api/v1/rag/documents` | GET | 列出已导入文档 |
+| `/api/v1/rag/documents/{doc_id}` | DELETE | 删除文档 |
+
+所有端点需要 Bearer Token 认证，带限流装饰器。
+
+### 19.5 前端页面
+
+**文件**：`frontend/src/pages/KnowledgePage.jsx`
+
+功能：
+- 拖拽 / 点击上传文件
+- 文档列表（文件名、分块数、上传时间）
+- 删除文档
+- 上传进度反馈
+- 完整中英文 i18n（`knowledge.*` 命名空间）
+
+**路由**：`/knowledge`，侧边栏「知识库」入口位于「审批」按钮上方。
+
+### 19.6 Embedding 配置
+
+文档向量化复用 `.env` 中的长期记忆 Embedding 配置：
+
+```bash
+LONG_TERM_MEMORY_EMBEDDER_MODEL=text-embedding-3-small   # Embedding 模型
+LONG_TERM_MEMORY_EMBEDDER_BASE_URL=                       # 自定义端点（留空=OpenAI）
+LONG_TERM_MEMORY_EMBEDDER_DIMS=1536                       # 向量维度（须与 Qdrant 一致）
+```
+
+### 19.7 与 Agent 的关联
+
+上传的文档存入 Qdrant `rag_documents` 集合后，Agent 的 `retrieve_knowledge` 工具（`app/core/langgraph/tools/rag_retrieve.py`）通过 `QdrantRetriever` 自动检索相关内容。用户在聊天中提问时，Agent 会根据需要调用此工具获取知识库上下文。
+
+### 19.8 新增依赖
+
+```toml
+"pypdf>=5.0.0"                    # PDF 解析
+"python-docx>=1.1.0"              # DOCX 解析
+"langchain-text-splitters>=0.3.0" # 文本切块
+```
+
+---
+
+> **文档版本**: 1.9
+> **最后更新**: 2026-02-24
+> **覆盖模块**: Skills · **SkillCreator** · MCP · Multi-Agent · HITL · Frontend（Markdown 渲染 · 会话侧栏 · 401 拦截 · 代码分割 · **连接恢复** · **知识库管理**） · V1 Middleware（LangChain v1.2.8 API 适配） · Langfuse 追踪（config 层 CallbackHandler） · Workflow 编排引擎 · **RAG 知识库**（Qdrant · pgvector · RAGFlow · HTTP · **文档导入**） · **模型评估框架**（Langfuse trace + LLM 打分） · **数据库 ORM 模型**（SQLModel） · **Prometheus 指标采集** · **Grafana 监控仪表板**

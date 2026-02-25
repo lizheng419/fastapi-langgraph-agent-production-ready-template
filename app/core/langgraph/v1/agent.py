@@ -131,9 +131,11 @@ class V1Agent(BaseAgentMixin):
         if self._agent is None:
             await self._create_agent()
 
-        # Prepare memory context
+        # Prepare memory context — only load long-term memory for
+        # continuation messages (len > 1).  First message in a new session
+        # starts fresh so users can test without cross-session bleed.
         relevant_memory = ""
-        if user_id and self._config.enable_memory:
+        if user_id and self._config.enable_memory and len(messages) > 1:
             relevant_memory = (
                 await self._get_relevant_memory(user_id, messages[-1].content)
             ) or "No relevant memory found."
@@ -198,8 +200,9 @@ class V1Agent(BaseAgentMixin):
         if self._agent is None:
             await self._create_agent()
 
+        # Only load long-term memory for continuation messages (len > 1)
         relevant_memory = ""
-        if user_id and self._config.enable_memory:
+        if user_id and self._config.enable_memory and len(messages) > 1:
             relevant_memory = (
                 await self._get_relevant_memory(user_id, messages[-1].content)
             ) or "No relevant memory found."

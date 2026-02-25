@@ -66,6 +66,17 @@ export async function register(email, password) {
   return res.json()
 }
 
+export async function resetPassword(email, newPassword, masterPassword) {
+  const body = new URLSearchParams({ email, new_password: newPassword, master_password: masterPassword })
+  const res = await safeFetch(`${API_BASE}/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  if (!res.ok) throw new Error((await res.json()).detail || 'Password reset failed')
+  return res.json()
+}
+
 export async function login(username, password) {
   const body = new URLSearchParams({ username, password, grant_type: 'password' })
   const res = await safeFetch(`${API_BASE}/auth/login`, {
@@ -216,5 +227,41 @@ export async function rejectRequest(sessionToken, requestId, comment) {
     body: JSON.stringify({ comment }),
   }))
   if (!res.ok) throw new Error('Reject failed')
+  return res.json()
+}
+
+// --- RAG Document Management ---
+
+export async function uploadDocument(token, file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const headers = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/upload`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  }))
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Upload failed')
+  }
+  return res.json()
+}
+
+export async function getDocuments(token) {
+  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents`, {
+    headers: getHeaders(token),
+  }))
+  if (!res.ok) throw new Error('Failed to get documents')
+  return res.json()
+}
+
+export async function deleteDocument(token, docId) {
+  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents/${docId}`, {
+    method: 'DELETE',
+    headers: getHeaders(token),
+  }))
+  if (!res.ok) throw new Error('Failed to delete document')
   return res.json()
 }

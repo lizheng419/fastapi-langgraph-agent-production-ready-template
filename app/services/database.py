@@ -134,6 +134,27 @@ class DatabaseService:
             logger.info("user_deleted", email=email)
             return True
 
+    async def update_user_password(self, email: str, hashed_password: str) -> bool:
+        """Update a user's password by email.
+
+        Args:
+            email: The email of the user
+            hashed_password: The new hashed password
+
+        Returns:
+            bool: True if update was successful, False if user not found
+        """
+        with Session(self.engine) as session:
+            user = session.exec(select(User).where(User.email == email)).first()
+            if not user:
+                return False
+
+            user.hashed_password = hashed_password
+            session.add(user)
+            session.commit()
+            logger.info("user_password_updated", email=email)
+            return True
+
     async def create_session(self, session_id: str, user_id: int, name: str = "") -> ChatSession:
         """Create a new chat session.
 
