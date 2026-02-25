@@ -48,7 +48,9 @@ class RAGFlowRetriever(BaseRetriever):
         self._initialized = True
         logger.info("ragflow_retriever_initialized", base_url=base_url)
 
-    async def retrieve(self, query: str, top_k: int = 5, filters: Optional[dict[str, Any]] = None) -> list[RAGDocument]:
+    async def retrieve(
+        self, query: str, top_k: int = 5, filters: Optional[dict[str, Any]] = None
+    ) -> list[RAGDocument]:
         """Retrieve documents from RAGFlow."""
         if not self._initialized or self._client is None:
             await self.initialize()
@@ -127,14 +129,18 @@ class RAGFlowRetriever(BaseRetriever):
                 return []
 
             content = choices[0].get("message", {}).get("content", "")
-            return [
-                RAGDocument(
-                    content=content,
-                    source=f"ragflow_chat:{chat_id}",
-                    score=1.0,
-                    metadata={"chat_id": chat_id, "mode": "chat"},
-                )
-            ] if content else []
+            return (
+                [
+                    RAGDocument(
+                        content=content,
+                        source=f"ragflow_chat:{chat_id}",
+                        score=1.0,
+                        metadata={"chat_id": chat_id, "mode": "chat"},
+                    )
+                ]
+                if content
+                else []
+            )
 
         except Exception as e:
             logger.exception("ragflow_chat_retrieval_failed", chat_id=chat_id, error=str(e))
@@ -155,3 +161,120 @@ class RAGFlowRetriever(BaseRetriever):
         if self._client:
             await self._client.aclose()
         self._initialized = False
+
+    @property
+    def supports_document_management(self) -> bool:
+        """RAGFlow supports document management via dataset API."""
+        return True
+
+    async def list_documents(self, user_id: str = "") -> list[dict[str, Any]]:
+        """List documents from RAGFlow datasets."""
+        if not self._initialized or self._client is None:
+            await self.initialize()
+
+        dataset_ids = self.config.get("dataset_ids", [])
+        if not dataset_ids:
+            return []
+
+        all_docs = []
+        for dataset_id in dataset_ids:
+            try:
+                resp = await self._client.get(
+                    f"/api/v1/datasets/{dataset_id}/documents",
+                    params={"page": 1, "page_size": 1000},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                docs = data.get("data", {}).get("docs", [])
+                for doc in docs:
+                    all_docs.append(
+                        {
+                            "doc_id": doc.get("id", ""),
+                            "filename": doc.get("name", ""),
+                            "user_id": user_id,
+                            "created_at": doc.get("create_time", ""),
+                            "chunk_count": doc.get("chunk_count", 0),
+                            "provider": self.name,
+                            "dataset_id": dataset_id,
+                        }
+                    )
+            except Exception as e:
+                logger.exception(
+                    "ragflow_list_documents_failed",
+                    dataset_id=dataset_id,
+                    error=str(e),
+                )
+
+        all_docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+        return all_docs
+
+    async def get_document_chunks(self, doc_id: str) -> list[dict[str, Any]]:
+        """Get all chunks for a document from RAGFlow."""
+        if not self._initialized or self._client is None:
+            await self.initialize()
+
+        dataset_ids = self.config.get("dataset_ids", [])
+
+        for dataset_id in dataset_ids:
+            try:
+                resp = await self._client.get(
+                    f"/api/v1/datasets/{dataset_id}/documents/{doc_id}/chunks",
+                    params={"page": 1, "page_size": 1000},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                raw_chunks = data.get("data", {}).get("chunks", [])
+                if not raw_chunks:
+                    continue
+
+                chunks = []
+                for i, chunk in enumerate(raw_chunks):
+                    chunks.append(
+                        {
+                            "chunk_index": i,
+                            "content": chunk.get("content", ""),
+                            "source": chunk.get("document_name", ""),
+                            "doc_id": doc_id,
+                            "provider": self.name,
+                        }
+                    )
+                return chunks
+            except Exception as e:
+                logger.exception(
+                    "ragflow_get_chunks_failed",
+                    dataset_id=dataset_id,
+                    doc_id=doc_id,
+                    error=str(e),
+                )
+
+        return []
+
+    async def delete_document(self, doc_id: str) -> bool:
+        """Delete a document from RAGFlow."""
+        if not self._initialized or self._client is None:
+            await self.initialize()
+
+        dataset_ids = self.config.get("dataset_ids", [])
+
+        for dataset_id in dataset_ids:
+            try:
+                resp = await self._client.delete(
+                    f"/api/v1/datasets/{dataset_id}/documents",
+                    json={"ids": [doc_id]},
+                )
+                resp.raise_for_status()
+                logger.info(
+                    "ragflow_document_deleted",
+                    doc_id=doc_id,
+                    dataset_id=dataset_id,
+                )
+                return True
+            except Exception as e:
+                logger.exception(
+                    "ragflow_delete_document_failed",
+                    dataset_id=dataset_id,
+                    doc_id=doc_id,
+                    error=str(e),
+                )
+
+        return False

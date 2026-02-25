@@ -257,6 +257,15 @@ export async function getDocuments(token) {
   return res.json()
 }
 
+export async function getDocumentChunks(token, docId, provider = '') {
+  const params = provider ? `?provider=${encodeURIComponent(provider)}` : ''
+  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents/${docId}/chunks${params}`, {
+    headers: getHeaders(token),
+  }))
+  if (!res.ok) throw new Error('Failed to get document chunks')
+  return res.json()
+}
+
 export async function deleteDocument(token, docId) {
   const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents/${docId}`, {
     method: 'DELETE',

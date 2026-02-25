@@ -311,6 +311,74 @@ async def list_documents(
         await client.close()
 
 
+async def get_document_chunks(
+    doc_id: str,
+    collection_name: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Get all chunks for a specific document from Qdrant.
+
+    Args:
+        doc_id: The document ID to retrieve chunks for.
+        collection_name: Qdrant collection name.
+
+    Returns:
+        List of chunk dicts with content and metadata, sorted by chunk_index.
+    """
+    from qdrant_client import AsyncQdrantClient
+    from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+    collection = collection_name or settings.QDRANT_COLLECTION_NAME
+    client = AsyncQdrantClient(
+        host=settings.QDRANT_HOST,
+        port=settings.QDRANT_PORT,
+        api_key=settings.QDRANT_API_KEY or None,
+    )
+
+    try:
+        collections = await client.get_collections()
+        existing_names = [c.name for c in collections.collections]
+        if collection not in existing_names:
+            return []
+
+        scroll_filter = Filter(must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))])
+
+        chunks: list[dict[str, Any]] = []
+        offset = None
+
+        while True:
+            results = await client.scroll(
+                collection_name=collection,
+                scroll_filter=scroll_filter,
+                limit=100,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points, next_offset = results
+
+            for point in points:
+                payload = point.payload or {}
+                chunks.append(
+                    {
+                        "chunk_index": payload.get("chunk_index", 0),
+                        "content": payload.get("text", ""),
+                        "source": payload.get("source", ""),
+                        "doc_id": payload.get("doc_id", ""),
+                        "user_id": payload.get("user_id", ""),
+                        "created_at": payload.get("created_at", ""),
+                    }
+                )
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        chunks.sort(key=lambda c: c["chunk_index"])
+        return chunks
+    finally:
+        await client.close()
+
+
 async def delete_document(
     doc_id: str,
     collection_name: Optional[str] = None,

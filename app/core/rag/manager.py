@@ -103,9 +103,7 @@ class RetrieverManager:
         results = await asyncio.gather(*[_query_provider(n, p) for n, p in targets.items()])
         return list(results)
 
-    async def retrieve_and_merge(
-        self, query: RetrievalQuery, dedup: bool = True
-    ) -> list[RAGDocument]:
+    async def retrieve_and_merge(self, query: RetrievalQuery, dedup: bool = True) -> list[RAGDocument]:
         """Retrieve from all targeted providers and merge results by score.
 
         Args:
@@ -136,6 +134,84 @@ class RetrieverManager:
 
         all_docs.sort(key=lambda d: d.score, reverse=True)
         return all_docs[: query.top_k]
+
+    async def list_all_documents(self, user_id: str = "") -> list[dict[str, Any]]:
+        """List documents from all providers that support document management.
+
+        Args:
+            user_id: Filter by user_id if provided.
+
+        Returns:
+            Aggregated list of document metadata dicts from all providers.
+        """
+        all_docs: list[dict[str, Any]] = []
+        for name, provider in self._providers.items():
+            if not provider.supports_document_management:
+                continue
+            try:
+                docs = await provider.list_documents(user_id=user_id)
+                all_docs.extend(docs)
+            except Exception as e:
+                logger.exception("rag_list_documents_failed", provider=name, error=str(e))
+
+        all_docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
+        return all_docs
+
+    async def get_document_chunks(self, doc_id: str, provider_name: str = "") -> list[dict[str, Any]]:
+        """Get all chunks for a document from the appropriate provider.
+
+        Args:
+            doc_id: The document ID.
+            provider_name: Optional provider name hint. If empty, tries all providers.
+
+        Returns:
+            List of chunk dicts with content and metadata.
+        """
+        if provider_name:
+            provider = self._providers.get(provider_name)
+            if provider and provider.supports_document_management:
+                return await provider.get_document_chunks(doc_id)
+            return []
+
+        for name, provider in self._providers.items():
+            if not provider.supports_document_management:
+                continue
+            try:
+                chunks = await provider.get_document_chunks(doc_id)
+                if chunks:
+                    return chunks
+            except Exception as e:
+                logger.exception("rag_get_chunks_failed", provider=name, doc_id=doc_id, error=str(e))
+
+        return []
+
+    async def delete_document(self, doc_id: str, provider_name: str = "") -> bool:
+        """Delete a document from the appropriate provider.
+
+        Args:
+            doc_id: The document ID to delete.
+            provider_name: Optional provider name hint. If empty, tries all providers.
+
+        Returns:
+            True if deleted from at least one provider.
+        """
+        if provider_name:
+            provider = self._providers.get(provider_name)
+            if provider and provider.supports_document_management:
+                return await provider.delete_document(doc_id)
+            return False
+
+        for name, provider in self._providers.items():
+            if not provider.supports_document_management:
+                continue
+            try:
+                deleted = await provider.delete_document(doc_id)
+                if deleted:
+                    return True
+            except Exception as e:
+                logger.exception("rag_delete_document_failed", provider=name, doc_id=doc_id, error=str(e))
+
+        return False
 
     async def health_check_all(self) -> dict[str, bool]:
         """Run health checks on all providers.

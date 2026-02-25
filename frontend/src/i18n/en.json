@@ -94,6 +94,8 @@
     "delete": "Delete",
     "confirmDelete": "Are you sure you want to delete this document?",
     "deleteSuccess": "Document deleted",
+    "viewChunks": "View Chunks",
+    "characters": "chars",
     "howItWorks": "How it works",
     "howItWorksDesc": "Uploaded documents are parsed, split into chunks, converted to vector embeddings, and stored in the Qdrant vector database. When chatting with the AI, it can automatically retrieve relevant content from your knowledge base using the retrieve_knowledge tool."
   },

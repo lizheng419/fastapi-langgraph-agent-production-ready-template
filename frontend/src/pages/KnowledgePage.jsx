@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Upload, FileText, Trash2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, FileUp, File, X } from 'lucide-react'
-import { uploadDocument, getDocuments, deleteDocument } from '../api'
+import { Upload, FileText, Trash2, ArrowLeft, Loader2, AlertCircle, CheckCircle2, FileUp, File, X, Eye } from 'lucide-react'
+import { uploadDocument, getDocuments, deleteDocument, getDocumentChunks } from '../api'
 import { useLanguage } from '../i18n/LanguageContext'
 
 const SUPPORTED_TYPES = {
@@ -41,6 +41,8 @@ export default function KnowledgePage({ auth, onLogout }) {
   const [success, setSuccess] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [chunksModal, setChunksModal] = useState(null)
+  const [chunksLoading, setChunksLoading] = useState(false)
 
   const token = auth?.userToken || auth?.sessionToken
 
@@ -106,6 +108,19 @@ export default function KnowledgePage({ auth, onLogout }) {
       setError(err.message)
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  const handleViewChunks = async (doc) => {
+    setChunksLoading(true)
+    setError('')
+    try {
+      const data = await getDocumentChunks(token, doc.doc_id, doc.provider || '')
+      setChunksModal({ filename: doc.filename, chunks: data.chunks || [], total: data.total || 0 })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setChunksLoading(false)
     }
   }
 
@@ -182,8 +197,8 @@ export default function KnowledgePage({ auth, onLogout }) {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${dragOver
-              ? 'border-emerald-400 bg-emerald-50'
-              : 'border-gray-300 bg-white hover:border-gray-400'
+            ? 'border-emerald-400 bg-emerald-50'
+            : 'border-gray-300 bg-white hover:border-gray-400'
             }`}
         >
           {uploading ? (
@@ -263,9 +278,22 @@ export default function KnowledgePage({ auth, onLogout }) {
                       <span className="text-xs text-gray-400">
                         {doc.chunk_count} {t('knowledge.chunks') || 'chunks'}
                       </span>
+                      {doc.provider && (
+                        <span className="text-xs text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded">
+                          {doc.provider}
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400">{formatDate(doc.created_at)}</span>
                     </div>
                   </div>
+                  <button
+                    onClick={() => handleViewChunks(doc)}
+                    disabled={chunksLoading}
+                    className="p-2 text-gray-400 hover:text-emerald-500 rounded-lg hover:bg-emerald-50 transition-all opacity-0 group-hover:opacity-100"
+                    title={t('knowledge.viewChunks') || 'View Chunks'}
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={() => handleDelete(doc.doc_id)}
                     disabled={deletingId === doc.doc_id}
@@ -283,6 +311,48 @@ export default function KnowledgePage({ auth, onLogout }) {
             </div>
           )}
         </div>
+
+        {/* Chunks Modal */}
+        {chunksModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setChunksModal(null)}>
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-900">{chunksModal.filename}</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {chunksModal.total} {t('knowledge.chunks') || 'chunks'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setChunksModal(null)}
+                  className="p-2 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                {chunksModal.chunks.map((chunk, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-600">
+                        Chunk #{chunk.chunk_index}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {chunk.content?.length || 0} {t('knowledge.characters') || 'chars'}
+                      </span>
+                    </div>
+                    <pre className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-60 overflow-y-auto bg-white">
+                      {chunk.content}
+                    </pre>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info Card */}
         <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4">

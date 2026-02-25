@@ -12,6 +12,11 @@ class BaseRetriever(ABC):
     Every provider must implement:
     - retrieve(): async document retrieval
     - health_check(): verify connectivity
+
+    Providers that support document management may also override:
+    - list_documents(): list ingested documents
+    - get_document_chunks(): get all chunks for a document
+    - delete_document(): delete a document and its chunks
     """
 
     def __init__(self, name: str, config: dict[str, Any]):
@@ -53,6 +58,47 @@ class BaseRetriever(ABC):
     async def close(self) -> None:
         """Optional cleanup hook. Override if needed."""
         self._initialized = False
+
+    @property
+    def supports_document_management(self) -> bool:
+        """Return True if this provider supports list/get/delete documents.
+
+        Override in subclasses that implement document management.
+        """
+        return False
+
+    async def list_documents(self, user_id: str = "") -> list[dict[str, Any]]:
+        """List ingested documents. Override in subclasses that support this.
+
+        Args:
+            user_id: Filter by user_id if provided.
+
+        Returns:
+            List of document metadata dicts.
+        """
+        return []
+
+    async def get_document_chunks(self, doc_id: str) -> list[dict[str, Any]]:
+        """Get all chunks for a specific document. Override in subclasses.
+
+        Args:
+            doc_id: The document ID.
+
+        Returns:
+            List of chunk dicts with content and metadata, sorted by chunk_index.
+        """
+        return []
+
+    async def delete_document(self, doc_id: str) -> bool:
+        """Delete a document and its chunks. Override in subclasses.
+
+        Args:
+            doc_id: The document ID to delete.
+
+        Returns:
+            True if deleted successfully, False otherwise.
+        """
+        return False
 
     def __repr__(self) -> str:
         """Return a string representation of the retriever."""

@@ -1,14 +1,22 @@
 """RAG document management endpoints.
 
 Provides endpoints for uploading documents to the knowledge base,
-listing ingested documents, and deleting documents.
+listing ingested documents, viewing chunks, and deleting documents.
+
+Document management (list/chunks/delete) routes through the
+RetrieverManager so they work with any provider (Qdrant, RAGFlow,
+pgvector, HTTP, etc.).  Upload/ingest remains Qdrant-specific as it
+involves local parsing + embedding.
 """
+
+from typing import Optional
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
     HTTPException,
+    Query,
     Request,
     UploadFile,
 )
@@ -17,21 +25,30 @@ from fastapi.security import (
     HTTPBearer,
 )
 
-from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
 from app.core.rag.ingest import (
     SUPPORTED_EXTENSIONS,
-    delete_document,
     ingest_document,
-    list_documents,
 )
+from app.core.rag.manager import RetrieverManager, load_providers_from_config
 from app.utils.auth import verify_token
 
 router = APIRouter()
 security = HTTPBearer()
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+_manager: Optional[RetrieverManager] = None
+
+
+async def _get_manager() -> RetrieverManager:
+    """Get or create the global RetrieverManager singleton."""
+    global _manager
+    if _manager is None:
+        _manager = load_providers_from_config()
+        await _manager.initialize_all()
+    return _manager
 
 
 def _get_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -107,13 +124,38 @@ async def get_documents(
     request: Request,
     user_id: str = Depends(_get_user_id),
 ):
-    """List all documents in the RAG knowledge base."""
+    """List all documents across all RAG providers."""
     try:
-        docs = await list_documents(user_id=user_id)
+        manager = await _get_manager()
+        docs = await manager.list_all_documents(user_id=user_id)
         return {"documents": docs, "total": len(docs)}
     except Exception as e:
         logger.exception("document_list_failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to list documents: {str(e)}")
+
+
+@router.get("/documents/{doc_id}/chunks")
+@limiter.limit("30 per minute")
+async def get_chunks(
+    request: Request,
+    doc_id: str,
+    user_id: str = Depends(_get_user_id),
+    provider: str = Query("", description="Optional provider name hint"),
+):
+    """Get all chunks for a specific document (provider-agnostic)."""
+    try:
+        manager = await _get_manager()
+        chunks = await manager.get_document_chunks(doc_id=doc_id, provider_name=provider)
+        if not chunks:
+            raise HTTPException(status_code=404, detail="Document not found or has no chunks")
+        if chunks[0].get("user_id") and chunks[0]["user_id"] != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+        return {"doc_id": doc_id, "chunks": chunks, "total": len(chunks)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("document_chunks_failed", doc_id=doc_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to get chunks: {str(e)}")
 
 
 @router.delete("/documents/{doc_id}")
@@ -122,12 +164,18 @@ async def remove_document(
     request: Request,
     doc_id: str,
     user_id: str = Depends(_get_user_id),
+    provider: str = Query("", description="Optional provider name hint"),
 ):
-    """Delete a document and all its chunks from the knowledge base."""
+    """Delete a document and all its chunks (provider-agnostic)."""
     try:
-        await delete_document(doc_id=doc_id)
+        manager = await _get_manager()
+        deleted = await manager.delete_document(doc_id=doc_id, provider_name=provider)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Document not found or delete not supported by provider")
         logger.info("document_delete_success", doc_id=doc_id, user_id=user_id)
         return {"doc_id": doc_id, "deleted": True}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("document_delete_failed", doc_id=doc_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
