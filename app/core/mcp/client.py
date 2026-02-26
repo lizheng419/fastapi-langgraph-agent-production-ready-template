@@ -1,8 +1,13 @@
 """MCP client manager for connecting to external MCP servers.
 
 This module provides an async MCP client manager that connects to
-configured MCP servers (SSE or stdio) and converts their tools
-into LangChain-compatible tools for use with LangGraph.
+configured MCP servers (SSE, streamable_http, or stdio) via
+``MultiServerMCPClient`` from ``langchain-mcp-adapters`` and converts
+their tools into LangChain-compatible tools for use with LangGraph.
+
+The ``MultiServerMCPClient`` instance is kept alive so that MCP sessions
+remain open and tools can communicate with the remote servers at
+invocation time.
 """
 
 import json
@@ -18,95 +23,117 @@ from langchain_core.tools.base import BaseTool
 
 from app.core.logging import logger
 
-
-class MCPServerConfig:
-    """Configuration for a single MCP server connection.
-
-    Attributes:
-        name: Human-readable name for the server.
-        transport: Transport type ('sse' or 'stdio').
-        url: URL for SSE transport.
-        command: Command for stdio transport.
-        args: Arguments for stdio transport command.
-        env: Environment variables for stdio transport.
-        enabled: Whether this server is enabled.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        transport: str = "sse",
-        url: Optional[str] = None,
-        command: Optional[str] = None,
-        args: Optional[List[str]] = None,
-        env: Optional[Dict[str, str]] = None,
-        enabled: bool = True,
-    ):
-        """Initialize MCP server configuration."""
-        self.name = name
-        self.transport = transport
-        self.url = url
-        self.command = command
-        self.args = args or []
-        self.env = env or {}
-        self.enabled = enabled
+# Supported transport types (mapped to MultiServerMCPClient keys)
+_VALID_TRANSPORTS = {"stdio", "sse", "streamable_http"}
 
 
 class MCPManager:
     """Manages MCP server connections and tool loading.
 
-    Handles lifecycle of MCP client sessions and provides
-    LangChain-compatible tools from connected MCP servers.
+    Uses ``MultiServerMCPClient`` to maintain persistent sessions to all
+    configured MCP servers.  Tools loaded from these sessions remain
+    functional for the lifetime of the manager.
     """
 
     def __init__(self):
         """Initialize the MCP manager."""
-        self._servers: List[MCPServerConfig] = []
+        self._client: Any = None  # MultiServerMCPClient instance (kept alive)
         self._tools: List[BaseTool] = []
         self._initialized = False
+        self._server_configs: List[Dict[str, Any]] = []
         self._load_config()
 
+    # ─── Config loading ──────────────────────────────────────────
+
     def _load_config(self) -> None:
-        """Load MCP server configurations from environment or config file."""
+        """Load MCP server configurations from ``mcp_servers.json``."""
         config_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
             "mcp_servers.json",
         )
 
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-
-                for server_config in config.get("servers", []):
-                    server = MCPServerConfig(
-                        name=server_config.get("name", "unknown"),
-                        transport=server_config.get("transport", "sse"),
-                        url=server_config.get("url"),
-                        command=server_config.get("command"),
-                        args=server_config.get("args", []),
-                        env=server_config.get("env", {}),
-                        enabled=server_config.get("enabled", True),
-                    )
-                    if server.enabled:
-                        self._servers.append(server)
-                        logger.info("mcp_server_config_loaded", server_name=server.name, transport=server.transport)
-
-            except Exception as e:
-                logger.exception("mcp_config_load_failed", error=str(e), config_path=config_path)
-        else:
+        if not os.path.exists(config_path):
             logger.info("mcp_config_not_found", config_path=config_path)
+            return
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            for entry in config.get("servers", []):
+                if not entry.get("enabled", True):
+                    continue
+                self._server_configs.append(entry)
+                logger.info(
+                    "mcp_server_config_loaded",
+                    server_name=entry.get("name", "unknown"),
+                    transport=entry.get("transport", "stdio"),
+                )
+
+        except Exception:
+            logger.exception("mcp_config_load_failed", config_path=config_path)
+
+    # ─── Config conversion ───────────────────────────────────────
+
+    @staticmethod
+    def _build_client_dict(configs: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Convert ``mcp_servers.json`` entries into the dict format expected by ``MultiServerMCPClient``.
+
+        Returns:
+            Dict keyed by server name, values are connection kwargs.
+        """
+        result: Dict[str, Dict[str, Any]] = {}
+        for entry in configs:
+            name = entry.get("name", "unknown")
+            transport = entry.get("transport", "stdio")
+
+            if transport not in _VALID_TRANSPORTS:
+                logger.warning(
+                    "mcp_unsupported_transport",
+                    server_name=name,
+                    transport=transport,
+                )
+                continue
+
+            server_dict: Dict[str, Any] = {"transport": transport}
+
+            if transport in ("sse", "streamable_http"):
+                url = entry.get("url")
+                if not url:
+                    logger.warning("mcp_server_missing_url", server_name=name)
+                    continue
+                server_dict["url"] = url
+                if entry.get("headers"):
+                    server_dict["headers"] = entry["headers"]
+
+            elif transport == "stdio":
+                command = entry.get("command")
+                if not command:
+                    logger.warning("mcp_server_missing_command", server_name=name)
+                    continue
+                server_dict["command"] = command
+                server_dict["args"] = entry.get("args", [])
+                env = entry.get("env", {})
+                if env:
+                    server_dict["env"] = {**os.environ, **env}
+
+            result[name] = server_dict
+
+        return result
+
+    # ─── Initialization ──────────────────────────────────────────
 
     async def initialize(self) -> None:
         """Initialize connections to all configured MCP servers and load tools.
 
-        This method connects to each configured MCP server using
-        langchain-mcp-adapters and converts their tools to LangChain format.
+        Uses ``MultiServerMCPClient`` which manages session lifecycle
+        internally — sessions stay open so that loaded tools can
+        actually invoke the remote MCP servers.
         """
         if self._initialized:
             return
 
-        if not self._servers:
+        if not self._server_configs:
             logger.info("no_mcp_servers_configured")
             self._initialized = True
             return
@@ -121,75 +148,43 @@ class MCPManager:
             self._initialized = True
             return
 
-        for server in self._servers:
-            try:
-                await self._connect_server(server)
-            except Exception as e:
-                logger.exception(
-                    "mcp_server_connection_failed",
-                    server_name=server.name,
-                    error=str(e),
-                )
+        client_dict = self._build_client_dict(self._server_configs)
+        if not client_dict:
+            logger.warning("mcp_no_valid_servers_after_config_conversion")
+            self._initialized = True
+            return
+
+        try:
+            self._client = MultiServerMCPClient(client_dict)
+            self._tools = await self._client.get_tools()
+            logger.info(
+                "mcp_initialization_complete",
+                total_tools=len(self._tools),
+                servers=list(client_dict.keys()),
+                tool_names=[t.name for t in self._tools],
+            )
+        except Exception:
+            logger.exception("mcp_initialization_failed")
+            self._tools = []
 
         self._initialized = True
-        logger.info("mcp_initialization_complete", total_tools=len(self._tools))
 
-    async def _connect_server(self, server: MCPServerConfig) -> None:
-        """Connect to a single MCP server and load its tools.
+    # ─── Cleanup ─────────────────────────────────────────────────
 
-        Args:
-            server: The server configuration to connect to.
-        """
-        from langchain_mcp_adapters.tools import load_mcp_tools
-        from mcp import ClientSession
+    async def close(self) -> None:
+        """Close all MCP server connections gracefully."""
+        if self._client is not None:
+            try:
+                if hasattr(self._client, "close"):
+                    await self._client.close()
+            except Exception:
+                logger.exception("mcp_close_failed")
+            self._client = None
+            self._tools = []
+            self._initialized = False
+            logger.info("mcp_connections_closed")
 
-        if server.transport == "sse":
-            if not server.url:
-                logger.warning("mcp_server_missing_url", server_name=server.name)
-                return
-
-            from mcp.client.sse import sse_client
-
-            async with sse_client(url=server.url) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = await load_mcp_tools(session)
-                    self._tools.extend(tools)
-                    logger.info(
-                        "mcp_server_connected",
-                        server_name=server.name,
-                        transport="sse",
-                        tools_count=len(tools),
-                        tool_names=[t.name for t in tools],
-                    )
-
-        elif server.transport == "stdio":
-            if not server.command:
-                logger.warning("mcp_server_missing_command", server_name=server.name)
-                return
-
-            from mcp.client.stdio import StdioServerParameters, stdio_client
-
-            server_params = StdioServerParameters(
-                command=server.command,
-                args=server.args,
-                env={**os.environ, **server.env} if server.env else None,
-            )
-
-            async with stdio_client(server_params) as (read, write):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = await load_mcp_tools(session)
-                    self._tools.extend(tools)
-                    logger.info(
-                        "mcp_server_connected",
-                        server_name=server.name,
-                        transport="stdio",
-                        tools_count=len(tools),
-                        tool_names=[t.name for t in tools],
-                    )
-        else:
-            logger.warning("mcp_unsupported_transport", server_name=server.name, transport=server.transport)
+    # ─── Accessors ───────────────────────────────────────────────
 
     def get_tools(self) -> List[BaseTool]:
         """Get all loaded MCP tools.
@@ -207,7 +202,7 @@ class MCPManager:
     @property
     def server_count(self) -> int:
         """Get the number of configured MCP servers."""
-        return len(self._servers)
+        return len(self._server_configs)
 
 
 # Global MCP manager instance

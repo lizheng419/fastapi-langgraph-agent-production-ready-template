@@ -96,7 +96,7 @@
 | HITL | `app/api/v1/approval.py` | 审批 REST API 端点 |
 | Frontend | `frontend/src/App.jsx` | 路由 + 全局认证状态 + 401 自动登出 |
 | Frontend | `frontend/src/api.js` | 后端 API 封装层（全局 401 拦截） |
-| Frontend | `frontend/src/components/MarkdownRenderer.jsx` | Markdown 渲染组件（GFM + 代码高亮 + Copy） |
+| Frontend | `frontend/src/components/MarkdownRenderer.jsx` | Markdown 渲染组件（GFM + 代码高亮 + Copy + `<think>` 思考过程折叠 + rehype-raw HTML 渲染） |
 | Frontend | `frontend/src/pages/LoginPage.jsx` | 登录/注册页面 |
 | Frontend | `frontend/src/pages/ChatPage.jsx` | 聊天页面（SSE 流式 + 会话侧栏 + Markdown 渲染） |
 | Frontend | `frontend/src/pages/ApprovalsPage.jsx` | HITL 审批管理页面 |
@@ -835,6 +835,7 @@ def _requires_approval(self, tool_name: str, args: dict) -> bool:
 | Lucide React | 0.460 | SVG 图标库 |
 | react-markdown | 10.1 | Markdown 渲染 |
 | remark-gfm | 4.0 | GitHub Flavored Markdown 支持（表格、任务列表等） |
+| rehype-raw | latest | 渲染 Markdown 中嵌入的 HTML 标签（如 `<think>`） |
 | react-syntax-highlighter | 16.1 | 代码块语法高亮 |
 
 ### 6.2 项目结构
@@ -855,7 +856,7 @@ frontend/
     ├── App.jsx             # 路由 + 全局认证状态 + 401 自动登出
     ├── api.js              # 后端 API 封装层（全局 401 拦截）
     ├── components/
-    │   └── MarkdownRenderer.jsx  # Markdown 渲染组件（GFM + 代码高亮 + Copy）
+    │   └── MarkdownRenderer.jsx  # Markdown 渲染组件（GFM + 代码高亮 + Copy + <think> 折叠）
     ├── i18n/
     │   ├── LanguageContext.jsx    # i18n Context + useLanguage hook
     │   ├── zh.json               # 中文语言包
@@ -913,10 +914,12 @@ frontend/
 - **连接恢复**：后端不可达时显示黄色 banner + 每 5 秒自动重试 + 手动重试按钮，恢复后自动清除（详见 [Section 14](#14-前端连接恢复机制)）
 
 **MarkdownRenderer 组件**（`components/MarkdownRenderer.jsx`）：
-- 基于 `react-markdown` + `remark-gfm` 渲染 Markdown 内容
+- 基于 `react-markdown` + `remark-gfm` + `rehype-raw` 渲染 Markdown 内容（含嵌入 HTML）
+- **`<think>` 标签处理**：`parseThinkBlocks()` 解析 LLM 输出中的 `<think>...</think>` 块，渲染为紫色可折叠 `ThinkBlock` 面板（Brain 图标 + "Thinking Process" 标题），流式传输时自动展开显示 "Thinking..." 状态
 - 使用 `react-syntax-highlighter`（Prism + oneLight 主题）高亮代码块
-- 自定义渲染：段落、标题（h1-h3）、列表、引用块、表格、链接、分割线
+- 自定义渲染：段落、标题（h1-h4）、列表、引用块、表格（圆角边框 + 行 hover）、链接、分割线、粗体、斜体
 - 代码块顶部显示语言标签 + Copy/Copied 状态按钮
+- `useMemo` 缓存 `parseThinkBlocks` 结果，避免重复解析
 
 **会话侧栏**：
 - 暗色主题（`bg-gray-900`），可通过按钮折叠/展开
@@ -1632,6 +1635,9 @@ rag_providers.json                # Provider 配置文件（项目根目录）
 |------|------|------|
 | `initialize` | `async () -> None` | 初始化连接（如建立客户端、连接池） |
 | `retrieve` | `async (query: RetrievalQuery) -> list[RAGDocument]` | 执行检索，返回文档列表 |
+| `list_documents` | `async (user_id: str) -> list[dict]` | 列出用户已导入的文档（去重） |
+| `get_document_chunks` | `async (doc_id: str) -> list[dict]` | 获取文档的所有分块内容 |
+| `delete_document` | `async (doc_id: str) -> bool` | 按 doc_id 删除文档及其所有向量块 |
 | `health_check` | `async () -> bool` | 健康检查 |
 | `close` | `async () -> None` | 关闭连接 |
 
@@ -1646,8 +1652,12 @@ rag_providers.json                # Provider 配置文件（项目根目录）
 | `register(name, retriever)` | 注册 Provider 实例 |
 | `initialize_all()` | 异步初始化所有已注册 Provider |
 | `retrieve(query)` | 并行查询所有 Provider，合并去重结果 |
+| `list_documents(user_id, provider_name)` | 跨 Provider 聚合文档列表（可指定单一 Provider） |
+| `get_document_chunks(doc_id, provider_name)` | 获取文档分块内容 |
+| `delete_document(doc_id, provider_name)` | 删除文档及其向量块 |
 | `close_all()` | 关闭所有 Provider 连接 |
 | `load_providers_from_config()` | 从 `rag_providers.json` 加载并注册 Provider |
+| `get_shared_manager()` | 全局单例获取器，API 端点和 Agent 工具共享同一实例 |
 
 #### `PROVIDER_REGISTRY` — 类型映射
 
@@ -2521,17 +2531,23 @@ POST /api/v1/rag/upload  (multipart/form-data)
 
 ### 19.4 后端实现
 
-**核心文件**：`app/core/rag/ingest.py`
-
-关键函数：
+**导入管线**：`app/core/rag/ingest.py`（仅负责解析/切块/向量化/写入）
 
 | 函数 | 说明 |
 |------|------|
 | `parse_document(filename, content)` | 根据扩展名分派解析器 |
 | `chunk_text(text, chunk_size, chunk_overlap)` | 文本切块（默认 1000/200） |
 | `ingest_document(filename, content, user_id)` | 完整管线：解析→切块→Embed→Qdrant |
-| `list_documents(user_id)` | 查询 Qdrant 获取去重的文档列表 |
-| `delete_document(doc_id)` | 按 doc_id 删除所有向量块 |
+
+**文档管理**：通过 `RetrieverManager`（Provider 无关）
+
+| 方法 | 说明 |
+|------|------|
+| `manager.list_documents(user_id)` | 跨所有 Provider 聚合文档列表（去重） |
+| `manager.get_document_chunks(doc_id)` | 获取文档的所有分块内容 |
+| `manager.delete_document(doc_id)` | 按 doc_id 删除文档及其所有向量块 |
+
+> **架构变更**（v2.0.0）：`list_documents`、`get_document_chunks`、`delete_document` 已从 `ingest.py` 迁移到 `BaseRetriever` 接口及各 Provider 实现（如 `QdrantRetriever`），通过 `RetrieverManager` 聚合调用。API 端点和 Agent 工具共享同一 `get_shared_manager()` 全局单例。
 
 **API 路由**：`app/api/v1/rag.py`
 
@@ -2549,8 +2565,9 @@ POST /api/v1/rag/upload  (multipart/form-data)
 
 功能：
 - 拖拽 / 点击上传文件
-- 文档列表（文件名、分块数、上传时间）
-- 删除文档
+- 文档列表（文件名、分块数、上传时间、Provider 来源）
+- **分块查看**：点击文档可展开查看所有分块内容（Modal 弹窗）
+- 删除文档（携带 `provider` 参数，支持多 Provider 场景）
 - 上传进度反馈
 - 完整中英文 i18n（`knowledge.*` 命名空间）
 
@@ -2580,6 +2597,6 @@ LONG_TERM_MEMORY_EMBEDDER_DIMS=1536                       # 向量维度（须�
 
 ---
 
-> **文档版本**: 1.9
-> **最后更新**: 2026-02-24
-> **覆盖模块**: Skills · **SkillCreator** · MCP · Multi-Agent · HITL · Frontend（Markdown 渲染 · 会话侧栏 · 401 拦截 · 代码分割 · **连接恢复** · **知识库管理**） · V1 Middleware（LangChain v1.2.8 API 适配） · Langfuse 追踪（config 层 CallbackHandler） · Workflow 编排引擎 · **RAG 知识库**（Qdrant · pgvector · RAGFlow · HTTP · **文档导入**） · **模型评估框架**（Langfuse trace + LLM 打分） · **数据库 ORM 模型**（SQLModel） · **Prometheus 指标采集** · **Grafana 监控仪表板**
+> **文档版本**: 2.0
+> **最后更新**: 2026-02-26
+> **覆盖模块**: Skills · **SkillCreator** · MCP · Multi-Agent · HITL · Frontend（Markdown 渲染 · **`<think>` 思考过程折叠** · 会话侧栏 · 401 拦截 · 代码分割 · **连接恢复** · **知识库管理**） · V1 Middleware（LangChain v1.2.8 API 适配） · Langfuse 追踪（config 层 CallbackHandler） · Workflow 编排引擎 · **RAG 知识库**（Qdrant · pgvector · RAGFlow · HTTP · **文档导入** · **Provider 无关文档管理**） · **LLM 独立 Base URL 配置** · **模型评估框架**（Langfuse trace + LLM 打分） · **数据库 ORM 模型**（SQLModel） · **Prometheus 指标采集** · **Grafana 监控仪表板**

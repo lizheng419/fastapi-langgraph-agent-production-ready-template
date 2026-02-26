@@ -1,6 +1,13 @@
 {
   "servers": [
     {
+      "name": "example-streamable-http-server",
+      "transport": "streamable_http",
+      "url": "http://localhost:8001/mcp",
+      "headers": {},
+      "enabled": false
+    },
+    {
       "name": "example-sse-server",
       "transport": "sse",
       "url": "http://localhost:8001/sse",
@@ -10,7 +17,11 @@
       "name": "example-stdio-server",
       "transport": "stdio",
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/tmp"
+      ],
       "env": {},
       "enabled": false
     }

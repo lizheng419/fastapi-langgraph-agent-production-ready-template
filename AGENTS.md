@@ -134,6 +134,8 @@ Located in `app/core/rag/`:
 - **Built-in providers**: Qdrant, pgvector, RAGFlow, GenericHTTP (Dify/FastGPT/custom)
 - **Configuration**: `rag_providers.json` at project root (mounted into Docker container)
 - **Agent tool**: `retrieve_knowledge` — searches across all enabled providers, merges and deduplicates results
+- **Provider-agnostic document management**: `BaseRetriever` defines `list_documents`, `get_document_chunks`, `delete_document`; `RetrieverManager` aggregates across providers
+- **Shared singleton**: `get_shared_manager()` in `manager.py` — API routes and agent tools share one `RetrieverManager` instance
 - **Adding a new provider**: Implement `BaseRetriever` in `app/core/rag/providers/`, register in `PROVIDER_REGISTRY`
 
 ### Supported Providers
@@ -149,16 +151,18 @@ Located in `app/core/rag/`:
 
 Located in `app/core/rag/ingest.py`:
 - **Pipeline**: Frontend upload → parse (PDF/TXT/MD/DOCX) → chunk (1000 chars, 200 overlap) → embed → Qdrant upsert
-- **API routes**: `app/api/v1/rag.py` — `POST /upload`, `GET /documents`, `DELETE /documents/{doc_id}`
-- **Frontend**: `KnowledgePage.jsx` at `/knowledge` — drag-and-drop upload, document list, delete
+- **Ingestion only** in `app/core/rag/ingest.py` — document listing/chunks/delete moved to `BaseRetriever` providers
+- **API routes**: `app/api/v1/rag.py` — `POST /upload`, `GET /documents`, `DELETE /documents/{doc_id}` (uses `get_shared_manager()`)
+- **Frontend**: `KnowledgePage.jsx` at `/knowledge` — drag-and-drop upload, document list with chunk viewer, delete (with `provider` param)
 - **Embedding**: Reuses `LONG_TERM_MEMORY_EMBEDDER_MODEL` / `LONG_TERM_MEMORY_EMBEDDER_DIMS` from `.env`
 - **Dependencies**: `pypdf`, `python-docx`, `langchain-text-splitters`
 
 ## MCP Integration
 
-- Configuration: `mcp_servers.json` (SSE and stdio transports)
-- Manager: `app/core/mcp/manager.py`
+- Configuration: `mcp_servers.json` (streamable_http, SSE, and stdio transports)
+- Client: `app/core/mcp/client.py` — `MCPManager` wraps `MultiServerMCPClient` with persistent sessions
 - Tools auto-discovered at agent startup via `_initialize_mcp_tools()`
+- Graceful cleanup: `mcp_manager.close()` called in FastAPI lifespan shutdown
 
 ## Human-in-the-Loop (HITL)
 
@@ -234,7 +238,8 @@ Located in `app/core/rag/ingest.py`:
 - MCP servers: `mcp_servers.json`
 - RAG providers: `rag_providers.json`
 - Workflow templates: `app/core/langgraph/workflow/templates/*.yaml`
-- Summarization: `SUMMARIZATION_MODEL`, `SUMMARIZATION_TRIGGER_TOKENS`, `SUMMARIZATION_KEEP_MESSAGES`
+- Summarization: `SUMMARIZATION_MODEL`, `SUMMARIZATION_BASE_URL`, `SUMMARIZATION_TRIGGER_TOKENS`, `SUMMARIZATION_KEEP_MESSAGES`
+- Long-term memory LLM: `LONG_TERM_MEMORY_MODEL`, `LONG_TERM_MEMORY_LLM_BASE_URL` (independent from `OPENAI_API_BASE`)
 - Embedder: `LONG_TERM_MEMORY_EMBEDDER_MODEL`, `LONG_TERM_MEMORY_EMBEDDER_BASE_URL`, `LONG_TERM_MEMORY_EMBEDDER_DIMS`
 
 ## Key Dependencies

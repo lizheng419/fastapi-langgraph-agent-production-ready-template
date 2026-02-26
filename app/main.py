@@ -32,6 +32,7 @@ from app.api.v1.api import api_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
+from app.core.mcp import mcp_manager
 from app.core.metrics import setup_metrics
 from app.core.middleware import (
     LoggingContextMiddleware,
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI):
         api_prefix=settings.API_V1_STR,
     )
     yield
+    await mcp_manager.close()
     logger.info("application_shutdown")
 
 

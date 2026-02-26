@@ -6,6 +6,59 @@
 
 ---
 
+## [2.0.0] - 2026-02-26
+
+### 新增 (Features)
+
+- **RAG 文档管理 Provider 抽象化**：`BaseRetriever` 接口新增 `list_documents`、`get_document_chunks`、`delete_document` 方法，文档管理不再绑定 Qdrant
+  - `QdrantRetriever` 实现完整的文档列表、分块查看、删除功能
+  - `RetrieverManager` 新增 `list_documents`、`get_document_chunks`、`delete_document` 聚合方法
+  - `get_shared_manager()` 全局单例，API 端点和 Agent 工具共享同一 `RetrieverManager` 实例
+- **LLM 独立 Base URL 配置**：新增 `LONG_TERM_MEMORY_LLM_BASE_URL` 和 `SUMMARIZATION_BASE_URL` 环境变量
+  - 长期记忆 LLM（mem0）和摘要中间件可独立配置 API 地址，不再强制复用 `OPENAI_API_BASE`
+  - 支持多模型部署在不同服务器的场景
+- **前端 Markdown 渲染增强**：`MarkdownRenderer` 组件重写
+  - `<think>` 标签解析为可折叠紫色思考过程面板（支持流式 "Thinking..." 状态）
+  - 新增 `rehype-raw` 插件，正确渲染内嵌 HTML
+  - 表格增加圆角边框和行 hover 效果
+  - 新增 `h4`、`strong`、`em`、`tr` 自定义渲染组件
+  - `useMemo` 缓存 `parseThinkBlocks` 提升性能
+- **MCP 客户端重写**：基于 `MultiServerMCPClient` 最佳实践
+  - 新增 `streamable_http` transport 支持（MCP 协议推荐标准）
+  - 新增 `close()` 方法，应用关闭时优雅断开所有 MCP 连接
+  - 新增 `headers` 配置支持（用于带认证的 HTTP MCP 服务器）
+
+### Bug 修复 (Fixes)
+
+- **LLM Base URL 错配**：`LONG_TERM_MEMORY_MODEL` 和 `SUMMARIZATION_MODEL` 错误使用 `OPENAI_API_BASE`，导致请求发送到未部署对应模型的服务器（404 错误）
+- **RAG 分块内容为空**：`ingest.py` 存储 chunk 使用 `content` key，但 `QdrantRetriever.get_document_chunks` 仅读取 `text` — 改为 `content → text → page_content` 三级回退
+- **双重 RetrieverManager 实例**：`rag.py` API 和 `rag_retrieve.py` Agent 工具各自创建独立单例 — 统一为 `get_shared_manager()` 全局单例
+- **前端删除文档未传 provider**：`deleteDocument` API 缺少 `provider` 参数，多 Provider 场景下删除失败
+- **前端分块显示缩进**：`<pre>` 标签 JSX 缩进导致内容前后出现多余空格
+- **MCP 工具 Session 立即关闭**：旧实现使用 `async with` 手动管理 MCP session，退出上下文后 session 关闭，导致加载的工具无法实际调用远程 MCP 服务器 — 改为 `MultiServerMCPClient` 持久化 session
+
+### 变更 (Changes)
+
+- `app/core/rag/ingest.py`：移除已迁移到 `QdrantRetriever` 的死代码（`list_documents`、`get_document_chunks`、`delete_document`）及未使用的 `hashlib` 导入
+- `app/core/config.py`：新增 `LONG_TERM_MEMORY_LLM_BASE_URL`、`SUMMARIZATION_BASE_URL` 配置项
+- `app/core/langgraph/base.py`：mem0 LLM 优先使用 `LONG_TERM_MEMORY_LLM_BASE_URL`
+- `app/core/langgraph/v1/middleware.py`：Summarization LLM 优先使用 `SUMMARIZATION_BASE_URL`
+- `frontend/src/api.js`：`deleteDocument` 新增可选 `provider` 参数
+- `frontend/src/pages/KnowledgePage.jsx`：`handleDelete` 传递完整 `doc` 对象（含 `provider`）
+- `frontend/package.json`：新增 `rehype-raw` 依赖
+- `app/core/mcp/client.py`：移除 `MCPServerConfig` 类和手动 session 管理，改用 `MultiServerMCPClient`
+- `app/main.py`：lifespan shutdown 新增 `mcp_manager.close()` 优雅清理
+- `mcp_servers.json`：新增 `streamable_http` 示例（推荐 transport）
+
+### 文档 (Docs)
+
+- `CHANGELOG.md`：新增 v2.0.0 变更记录
+- `NEW_FEATURES_GUIDE.md`：更新 MarkdownRenderer 文档（`<think>` 标签、rehype-raw）；更新 RAG 文档管理章节；更新 BaseRetriever / RetrieverManager 接口文档；更新环境变量配置
+- `QUICK_START.md`：新增 `LONG_TERM_MEMORY_LLM_BASE_URL`、`SUMMARIZATION_BASE_URL` 配置说明
+- `PROJECT_DOCUMENTATION_CN.md`：同步更新环境变量、RAG 组件、MarkdownRenderer 文档
+
+---
+
 ## [1.9.0] - 2026-02-24
 
 ### 新增 (Features)

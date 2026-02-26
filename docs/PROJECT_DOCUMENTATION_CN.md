@@ -146,7 +146,7 @@ fastapi-langgraph-agent-production-ready-template/
 │       ├── api.js                # 后端 API 封装层（全局 401 拦截）
 │       ├── index.css             # 全局样式
 │       ├── components/
-│       │   └── MarkdownRenderer.jsx  # Markdown 渲染（GFM + 代码高亮 + Copy）
+│       │   └── MarkdownRenderer.jsx  # Markdown 渲染（GFM + 代码高亮 + Copy + <think> 折叠）
 │       ├── i18n/                 # 国际化
 │       │   ├── LanguageContext.jsx
 │       │   ├── zh.json
@@ -536,6 +536,7 @@ QDRANT_API_KEY=               # 如有认证填写
 
 # 长期记忆设置 (可选)
 LONG_TERM_MEMORY_MODEL=gpt-4o-mini
+LONG_TERM_MEMORY_LLM_BASE_URL=        # 记忆 LLM 独立端点（留空=复用 OPENAI_API_BASE）
 LONG_TERM_MEMORY_EMBEDDER_MODEL=text-embedding-3-small
 LONG_TERM_MEMORY_EMBEDDER_BASE_URL=   # 自定义 Embedding 端点（留空=使用 OpenAI）
 LONG_TERM_MEMORY_EMBEDDER_DIMS=1536   # 768 适用于 bge-base-zh-v1.5，1536 适用于 OpenAI
@@ -543,6 +544,7 @@ LONG_TERM_MEMORY_COLLECTION_NAME=longterm_memory
 
 # 对话摘要 Middleware 设置 (可选)
 SUMMARIZATION_MODEL=gpt-4o-mini       # 用于摘要的模型
+SUMMARIZATION_BASE_URL=               # 摘要 LLM 独立端点（留空=复用 OPENAI_API_BASE）
 SUMMARIZATION_TRIGGER_TOKENS=4000     # 触发摘要的 token 阈值
 SUMMARIZATION_KEEP_MESSAGES=20        # 摘要后保留最近 N 条消息
 ```
@@ -1215,8 +1217,8 @@ RAG（Retrieval-Augmented Generation）模块为 Agent 提供外部知识库检�
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
-| `BaseRetriever` | `rag/base.py` | Provider 抽象接口（`initialize`、`retrieve`、`close`） |
-| `RetrieverManager` | `rag/manager.py` | 注册 Provider、并行查询、合并去重结果 |
+| `BaseRetriever` | `rag/base.py` | Provider 抽象接口（`initialize`、`retrieve`、`list_documents`、`get_document_chunks`、`delete_document`、`close`） |
+| `RetrieverManager` | `rag/manager.py` | 注册 Provider、并行查询、合并去重结果、文档管理聚合、`get_shared_manager()` 全局单例 |
 | `RAGDocument` | `rag/schema.py` | 检索文档数据模型 |
 | `PROVIDER_REGISTRY` | `rag/providers/__init__.py` | Provider 类型 → 实现类映射 |
 | `retrieve_knowledge` | `tools/rag_retrieve.py` | Agent 工具：搜索所有已启用 Provider |
@@ -1235,7 +1237,7 @@ async def retrieve_knowledge(query: str, top_k: int = 5) -> str:
 ### 12.7 添加自定义 Provider
 
 1. 在 `app/core/rag/providers/` 创建新文件，继承 `BaseRetriever`
-2. 实现 `initialize()`、`retrieve()`、`close()` 方法
+2. 实现 `initialize()`、`retrieve()`、`list_documents()`、`get_document_chunks()`、`delete_document()`、`close()` 方法
 3. 在 `app/core/rag/providers/__init__.py` 的 `PROVIDER_REGISTRY` 中注册
 4. 在 `rag_providers.json` 中添加配置项
 
@@ -1385,11 +1387,13 @@ ChatPage 左侧集成了可折叠的暗色会话侧栏：
 
 AI 回复通过 `MarkdownRenderer` 组件渲染，支持：
 
-- **GFM 表格**：完整的 GitHub Flavored Markdown 表格渲染
+- **`<think>` 思考过程折叠**：解析 LLM 输出中的 `<think>...</think>` 块，渲染为紫色可折叠面板（Brain 图标 + "Thinking Process"），流式传输时自动展开
+- **GFM 表格**：完整的 GitHub Flavored Markdown 表格渲染（圆角边框 + 行 hover 效果）
 - **代码块高亮**：使用 Prism（oneLight 主题）语法高亮，支持所有主流编程语言
 - **代码块 Copy 按钮**：每个代码块右上角显示语言标签 + 一键复制按钮（Copy/Copied 状态）
 - **行内代码**：灰色背景 + 等宽字体
-- **标题/列表/引用块/链接/分割线**：完整的 Markdown 元素样式
+- **HTML 渲染**：通过 `rehype-raw` 插件支持 Markdown 中嵌入的 HTML 标签
+- **标题/列表/引用块/链接/分割线/粗体/斜体**：完整的 Markdown 元素样式（h1-h4）
 
 #### 15.3.4 消息历史与 401 处理
 
