@@ -4,24 +4,11 @@ This tool allows the agent to search across configured knowledge base
 providers (Qdrant, pgvector, RAGFlow, Dify, FastGPT, custom HTTP APIs).
 """
 
-from typing import Optional
-
 from langchain_core.tools import tool
 
 from app.core.logging import logger
-from app.core.rag.manager import RetrieverManager, load_providers_from_config
+from app.core.rag.manager import get_shared_manager
 from app.core.rag.schema import RetrievalQuery
-
-_manager: Optional[RetrieverManager] = None
-
-
-async def _get_manager() -> RetrieverManager:
-    """Get or create the global RetrieverManager singleton."""
-    global _manager
-    if _manager is None:
-        _manager = load_providers_from_config()
-        await _manager.initialize_all()
-    return _manager
 
 
 @tool
@@ -45,7 +32,7 @@ async def retrieve_knowledge(query: str, top_k: int = 5, provider: str = "") -> 
         Retrieved knowledge base documents formatted as context.
     """
     try:
-        manager = await _get_manager()
+        manager = await get_shared_manager()
 
         if not manager.provider_names:
             return "No knowledge base providers are configured. Check rag_providers.json."

@@ -124,7 +124,15 @@ class BaseAgentMixin:
                             "provider": "openai",
                             "config": {
                                 "model": settings.LONG_TERM_MEMORY_MODEL,
-                                **({"openai_base_url": settings.OPENAI_API_BASE} if settings.OPENAI_API_BASE else {}),
+                                **(
+                                    {"openai_base_url": settings.LONG_TERM_MEMORY_LLM_BASE_URL}
+                                    if settings.LONG_TERM_MEMORY_LLM_BASE_URL
+                                    else (
+                                        {"openai_base_url": settings.OPENAI_API_BASE}
+                                        if settings.OPENAI_API_BASE
+                                        else {}
+                                    )
+                                ),
                             },
                         },
                         "embedder": {

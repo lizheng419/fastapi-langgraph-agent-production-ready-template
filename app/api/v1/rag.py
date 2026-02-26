@@ -9,8 +9,6 @@ pgvector, HTTP, etc.).  Upload/ingest remains Qdrant-specific as it
 involves local parsing + embedding.
 """
 
-from typing import Optional
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -31,24 +29,13 @@ from app.core.rag.ingest import (
     SUPPORTED_EXTENSIONS,
     ingest_document,
 )
-from app.core.rag.manager import RetrieverManager, load_providers_from_config
+from app.core.rag.manager import get_shared_manager
 from app.utils.auth import verify_token
 
 router = APIRouter()
 security = HTTPBearer()
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
-
-_manager: Optional[RetrieverManager] = None
-
-
-async def _get_manager() -> RetrieverManager:
-    """Get or create the global RetrieverManager singleton."""
-    global _manager
-    if _manager is None:
-        _manager = load_providers_from_config()
-        await _manager.initialize_all()
-    return _manager
 
 
 def _get_user_id(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -126,7 +113,7 @@ async def get_documents(
 ):
     """List all documents across all RAG providers."""
     try:
-        manager = await _get_manager()
+        manager = await get_shared_manager()
         docs = await manager.list_all_documents(user_id=user_id)
         return {"documents": docs, "total": len(docs)}
     except Exception as e:
@@ -144,7 +131,7 @@ async def get_chunks(
 ):
     """Get all chunks for a specific document (provider-agnostic)."""
     try:
-        manager = await _get_manager()
+        manager = await get_shared_manager()
         chunks = await manager.get_document_chunks(doc_id=doc_id, provider_name=provider)
         if not chunks:
             raise HTTPException(status_code=404, detail="Document not found or has no chunks")
@@ -168,7 +155,7 @@ async def remove_document(
 ):
     """Delete a document and all its chunks (provider-agnostic)."""
     try:
-        manager = await _get_manager()
+        manager = await get_shared_manager()
         deleted = await manager.delete_document(doc_id=doc_id, provider_name=provider)
         if not deleted:
             raise HTTPException(status_code=404, detail="Document not found or delete not supported by provider")

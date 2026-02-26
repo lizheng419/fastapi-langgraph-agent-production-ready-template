@@ -266,8 +266,9 @@ export async function getDocumentChunks(token, docId, provider = '') {
   return res.json()
 }
 
-export async function deleteDocument(token, docId) {
-  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents/${docId}`, {
+export async function deleteDocument(token, docId, provider = '') {
+  const params = provider ? `?provider=${encodeURIComponent(provider)}` : ''
+  const res = await handleResponse(await safeFetch(`${API_BASE}/rag/documents/${docId}${params}`, {
     method: 'DELETE',
     headers: getHeaders(token),
   }))

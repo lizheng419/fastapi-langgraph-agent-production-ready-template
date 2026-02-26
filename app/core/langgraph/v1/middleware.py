@@ -308,11 +308,12 @@ def create_default_middleware(
     # 2. Summarization — auto-condense long conversation history
     if enable_summarization:
         summ_model_name = summarization_model or settings.SUMMARIZATION_MODEL
+        summ_base_url = settings.SUMMARIZATION_BASE_URL or settings.OPENAI_API_BASE
         summ_model = ChatOpenAI(
             model=summ_model_name,
             temperature=0,
             api_key=settings.OPENAI_API_KEY,
-            **({"base_url": settings.OPENAI_API_BASE} if settings.OPENAI_API_BASE else {}),
+            **({"base_url": summ_base_url} if summ_base_url else {}),
         )
         middlewares.append(
             SummarizationMiddleware(

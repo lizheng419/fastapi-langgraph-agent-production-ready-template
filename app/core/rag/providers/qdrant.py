@@ -213,7 +213,7 @@ class QdrantRetriever(BaseRetriever):
                     chunks.append(
                         {
                             "chunk_index": payload.get("chunk_index", 0),
-                            "content": payload.get("text", ""),
+                            "content": payload.get("content", payload.get("text", payload.get("page_content", ""))),
                             "source": payload.get("source", ""),
                             "doc_id": payload.get("doc_id", ""),
                             "user_id": payload.get("user_id", ""),

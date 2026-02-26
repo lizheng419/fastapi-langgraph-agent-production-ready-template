@@ -157,6 +157,7 @@ class Settings:
 
         # Long term memory Configuration
         self.LONG_TERM_MEMORY_MODEL = os.getenv("LONG_TERM_MEMORY_MODEL", "gpt-5-nano")
+        self.LONG_TERM_MEMORY_LLM_BASE_URL = os.getenv("LONG_TERM_MEMORY_LLM_BASE_URL", "")
         self.LONG_TERM_MEMORY_EMBEDDER_MODEL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_MODEL", "text-embedding-3-small")
         self.LONG_TERM_MEMORY_EMBEDDER_BASE_URL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_BASE_URL", "")
         self.LONG_TERM_MEMORY_EMBEDDER_DIMS = int(os.getenv("LONG_TERM_MEMORY_EMBEDDER_DIMS", "1536"))
@@ -191,6 +192,7 @@ class Settings:
 
         # Summarization Middleware Configuration
         self.SUMMARIZATION_MODEL = os.getenv("SUMMARIZATION_MODEL", "gpt-4.1-mini")
+        self.SUMMARIZATION_BASE_URL = os.getenv("SUMMARIZATION_BASE_URL", "")
         self.SUMMARIZATION_TRIGGER_TOKENS = int(os.getenv("SUMMARIZATION_TRIGGER_TOKENS", "4000"))
         self.SUMMARIZATION_KEEP_MESSAGES = int(os.getenv("SUMMARIZATION_KEEP_MESSAGES", "20"))
 

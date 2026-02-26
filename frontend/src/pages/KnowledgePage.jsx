@@ -97,12 +97,12 @@ export default function KnowledgePage({ auth, onLogout }) {
     }
   }
 
-  const handleDelete = async (docId) => {
+  const handleDelete = async (doc) => {
     if (!confirm(t('knowledge.confirmDelete') || 'Are you sure you want to delete this document?')) return
-    setDeletingId(docId)
+    setDeletingId(doc.doc_id)
     try {
-      await deleteDocument(token, docId)
-      setDocuments((prev) => prev.filter((d) => d.doc_id !== docId))
+      await deleteDocument(token, doc.doc_id, doc.provider || '')
+      setDocuments((prev) => prev.filter((d) => d.doc_id !== doc.doc_id))
       setSuccess(t('knowledge.deleteSuccess') || 'Document deleted')
     } catch (err) {
       setError(err.message)
@@ -295,7 +295,7 @@ export default function KnowledgePage({ auth, onLogout }) {
                     <Eye className="w-4 h-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(doc.doc_id)}
+                    onClick={() => handleDelete(doc)}
                     disabled={deletingId === doc.doc_id}
                     className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-all opacity-0 group-hover:opacity-100"
                     title={t('knowledge.delete') || 'Delete'}
@@ -344,9 +344,7 @@ export default function KnowledgePage({ auth, onLogout }) {
                         {chunk.content?.length || 0} {t('knowledge.characters') || 'chars'}
                       </span>
                     </div>
-                    <pre className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-60 overflow-y-auto bg-white">
-                      {chunk.content}
-                    </pre>
+                    <pre className="px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap break-words font-mono leading-relaxed max-h-60 overflow-y-auto bg-white">{chunk.content}</pre>
                   </div>
                 ))}
               </div>

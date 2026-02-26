@@ -228,6 +228,23 @@ class RetrieverManager:
         return results
 
 
+_global_manager: Optional[RetrieverManager] = None
+
+
+async def get_shared_manager(config_path: str | None = None) -> RetrieverManager:
+    """Get or create the shared global RetrieverManager singleton.
+
+    This ensures only one manager instance (and one set of provider
+    connections) exists across the entire application — used by both
+    the API endpoints and the agent retrieve_knowledge tool.
+    """
+    global _global_manager
+    if _global_manager is None:
+        _global_manager = load_providers_from_config(config_path)
+        await _global_manager.initialize_all()
+    return _global_manager
+
+
 def load_providers_from_config(config_path: str | None = None) -> RetrieverManager:
     """Load retriever providers from a JSON configuration file.
 
